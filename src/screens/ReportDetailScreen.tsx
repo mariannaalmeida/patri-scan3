@@ -146,7 +146,7 @@ export const ReportDetailScreen = () => {
     navigation.navigate('Home');
   };
 
-  // ─── Exportações ──────────────────────────────────────────────────────────
+  // Exportações
   const handleExportCSV = useCallback(() => {
     if (!report) return;
     Alert.alert('Exportar CSV', 'Selecione o tipo de relatório que deseja exportar:', [
@@ -207,7 +207,6 @@ export const ReportDetailScreen = () => {
       },
     ]);
   }, [report]);
-
   const handleExportPDF = useCallback(() => {
     if (!report) return;
     Alert.alert('Exportar PDF', 'Deseja exportar o relatório completo em PDF?', [
@@ -217,10 +216,17 @@ export const ReportDetailScreen = () => {
         onPress: async () => {
           setIsExporting(true);
           try {
-            await ReportService.exportPDF(report);
-            Alert.alert('Sucesso', 'PDF exportado com sucesso!');
+            // ✅ Captura o result retornado pelo ReportService
+            const result = await ReportService.exportPDF(report);
+
+            // ✅ Verifica se a operação falhou e exibe o erro real
+            if (!result.ok) {
+              Alert.alert('Erro', result.error.message);
+            } else {
+              Alert.alert('Sucesso', 'PDF exportado com sucesso!');
+            }
           } catch (error) {
-            Alert.alert('Erro', error instanceof Error ? error.message : 'Falha ao exportar PDF');
+            Alert.alert('Erro', 'Falha inesperada ao exportar PDF');
           } finally {
             setIsExporting(false);
           }

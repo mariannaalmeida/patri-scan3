@@ -26,7 +26,7 @@ export const useAppNavigation = () => {
   const goToManualInventory = () => navigation.navigate('ManualInventory');
   
   // Navegação de configurações
-  //const goToSettings = () => navigation.navigate('Settings');
+  const goToSettings = () => navigation.navigate('Settings');
  // const goToAbout = () => navigation.navigate('About');
   
   // Voltar
@@ -40,7 +40,7 @@ export const useAppNavigation = () => {
     goToReportDetail,
     goToImportInventory,
     goToManualInventory,
-    //goToSettings,
+    goToSettings,
     //goToAbout,
     goBack,
     navigation,

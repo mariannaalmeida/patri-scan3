@@ -241,7 +241,7 @@ export const ManualInventoryScreen = () => {
       const result = await StorageService.saveInventory(inventory);
       if (result.ok) {
         Alert.alert(
-          '✅ Sucesso!',
+          'Sucesso!',
           `Inventário "${inventoryName}" criado com ${assetItems.length} itens.`,
           [
             {

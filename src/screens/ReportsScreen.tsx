@@ -114,18 +114,6 @@ export const ReportsScreen = () => {
     }
   }, []);
 
-  const withExportVoidGuard = useCallback(async (id: string, fn: () => Promise<void>) => {
-    setExportingId(id);
-    try {
-      await fn();
-      Alert.alert('Sucesso', 'PDF exportado com sucesso!');
-    } catch (e) {
-      Alert.alert('Erro na exportação', e instanceof Error ? e.message : 'Tente novamente.');
-    } finally {
-      setExportingId(null);
-    }
-  }, []);
-
   const handleExportCSV = useCallback(
     (row: ReportRow) => {
       Alert.alert('Exportar CSV', 'Qual versão do CSV deseja exportar?', [
@@ -158,11 +146,12 @@ export const ReportsScreen = () => {
 
   const handleExportPDF = useCallback(
     (row: ReportRow) => {
-      withExportVoidGuard(`pdf-${row.inventory.metadata.id}`, () =>
+      // ✅ Agora usamos o ResultGuard (o mesmo do CSV) para o PDF também!
+      withExportResultGuard(`pdf-${row.inventory.metadata.id}`, () =>
         ReportService.exportPDF(row.report)
       );
     },
-    [withExportVoidGuard]
+    [withExportResultGuard]
   );
 
   //  Loading

@@ -22,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles, homeStyles } from '../styles/theme';
 import { AssetItem, Inventory, RootStackParamList } from '../types/types';
@@ -166,17 +167,25 @@ export const HomeScreen = () => {
     [filteredAssets, page]
   );
 
+  const isLoadingMoreRef = useRef(false);
+
   const handleLoadMore = useCallback(() => {
-    if (isLoadingMore || isEndReached) return;
+    if (isLoadingMoreRef.current || isEndReached) return;
     const nextPage = page + 1;
     const nextCount = nextPage * PAGE_SIZE;
     if (nextCount >= filteredAssets.length) {
       setIsEndReached(true);
+      return;
     }
-    // Use requestAnimationFrame ou apenas setPage diretamente
+
+    isLoadingMoreRef.current = true;
+    setIsLoadingMore(true);
+
+    // Use requestAnimationFrame ou apenas setPage diretamente;  o importante é resetar após a renderização.
     requestAnimationFrame(() => {
       setPage(nextPage);
       setIsLoadingMore(false);
+      isLoadingMoreRef.current = false;
     });
   }, [page, filteredAssets.length, isLoadingMore, isEndReached]);
 
@@ -272,11 +281,11 @@ export const HomeScreen = () => {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {/* Botão de Relatórios */}
           <TouchableOpacity style={homeStyles.addBtn} onPress={handleGoToReports}>
-            <Text style={homeStyles.addBtnText}>📊</Text>
+            <Ionicons name="bar-chart-outline" size={20} color={colors.accent} />
           </TouchableOpacity>
           {/* Botão de Configurações */}
           <TouchableOpacity style={homeStyles.addBtn} onPress={handleGoToSettings}>
-            <Text style={homeStyles.addBtnText}>⚙️</Text>
+            <Ionicons name="settings-outline" size={20} color={colors.accent} />
           </TouchableOpacity>
         </View>
       </View>
@@ -284,7 +293,12 @@ export const HomeScreen = () => {
       {/* Busca e filtro */}
       <View style={homeStyles.searchRow}>
         <View style={homeStyles.searchBar}>
-          <Text style={homeStyles.searchIcon}>🔍</Text>
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color={colors.textDim}
+            style={{ marginRight: 6 }}
+          />
           <TextInput
             style={homeStyles.searchInput}
             value={searchRaw}
@@ -303,7 +317,11 @@ export const HomeScreen = () => {
             setIsFilterOpen(true);
           }}
         >
-          <Text style={homeStyles.filterBtnText}>⚙</Text>
+          <Ionicons
+            name="options-outline"
+            size={20}
+            color={hasActiveFilters ? colors.accent : colors.textDim}
+          />
           {hasActiveFilters && <View style={homeStyles.filterDot} />}
         </TouchableOpacity>
       </View>
@@ -334,7 +352,7 @@ export const HomeScreen = () => {
           onPress={handleGoToScanner}
           disabled={inventories.length === 0}
         >
-          <Text style={homeStyles.actionBtnIcon}>▶</Text>
+          <Ionicons name="barcode-outline" size={18} color="#000" style={{ marginRight: 4 }} />
           <Text style={homeStyles.actionBtnText}>Escanear</Text>
         </TouchableOpacity>
 
@@ -342,7 +360,12 @@ export const HomeScreen = () => {
           style={[homeStyles.actionBtn, homeStyles.actionBtnSecondary]}
           onPress={handleImportCSV}
         >
-          <Text style={[homeStyles.actionBtnIcon, { color: colors.accent }]}>📄</Text>
+          <Ionicons
+            name="document-attach-outline"
+            size={18}
+            color={colors.accent}
+            style={{ marginRight: 4 }}
+          />
           <Text style={[homeStyles.actionBtnText, { color: colors.accent }]}>Importar CSV</Text>
         </TouchableOpacity>
 
@@ -350,7 +373,12 @@ export const HomeScreen = () => {
           style={[homeStyles.actionBtn, homeStyles.actionBtnSecondary]}
           onPress={handleManualInventory}
         >
-          <Text style={[homeStyles.actionBtnIcon, { color: colors.accent }]}>✏️</Text>
+          <Ionicons
+            name="create-outline"
+            size={18}
+            color={colors.accent}
+            style={{ marginRight: 4 }}
+          />
           <Text style={[homeStyles.actionBtnText, { color: colors.accent }]}>Cadastrar</Text>
         </TouchableOpacity>
       </View>
@@ -394,7 +422,12 @@ export const HomeScreen = () => {
         }
         ListEmptyComponent={
           <View style={homeStyles.emptyContainer}>
-            <Text style={homeStyles.emptyIcon}>{search || hasActiveFilters ? '🔍' : '📦'}</Text>
+            <Ionicons
+              name={search || hasActiveFilters ? 'search-outline' : 'cube-outline'}
+              size={48}
+              color={colors.textDim}
+              style={{ marginBottom: 12 }}
+            />
             <Text style={homeStyles.emptyTitle}>
               {search || hasActiveFilters ? 'Nenhum item encontrado' : 'Nenhum bem patrimonial'}
             </Text>
@@ -430,7 +463,7 @@ interface AssetRowProps {
   onPress: () => void;
 }
 
-const AssetRow = ({ asset, onPress }: AssetRowProps) => (
+const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
   <TouchableOpacity
     style={[homeStyles.itemRow, asset.isScanned && homeStyles.itemRowScanned]}
     onPress={onPress}
@@ -441,9 +474,11 @@ const AssetRow = ({ asset, onPress }: AssetRowProps) => (
       <View style={homeStyles.itemHeader}>
         <Text style={homeStyles.itemCode}>{asset.code}</Text>
         <View style={asset.isScanned ? homeStyles.badgeOk : homeStyles.badgePending}>
-          <Text style={asset.isScanned ? homeStyles.badgeOkText : homeStyles.badgePendingText}>
-            {asset.isScanned ? '✓' : '○'}
-          </Text>
+          {asset.isScanned ? (
+            <Ionicons name="checkmark" size={12} color="#0F6E56" />
+          ) : (
+            <Ionicons name="time-outline" size={12} color="#854F0B" />
+          )}
         </View>
       </View>
       {asset.description && (
@@ -452,13 +487,23 @@ const AssetRow = ({ asset, onPress }: AssetRowProps) => (
         </Text>
       )}
       <View style={homeStyles.itemMeta}>
-        {asset.location && <Text style={homeStyles.itemMetaText}>📍 {asset.location}</Text>}
-        {asset.department && <Text style={homeStyles.itemMetaText}>🏢 {asset.department}</Text>}
-        <Text style={homeStyles.itemMetaInv}>📋 {asset.inventoryName}</Text>
+        {asset.location && (
+          <Text style={homeStyles.itemMetaText}>
+            <Ionicons name="location-outline" size={11} /> {asset.location}
+          </Text>
+        )}
+        {asset.department && (
+          <Text style={homeStyles.itemMetaText}>
+            <Ionicons name="business-outline" size={11} /> {asset.department}
+          </Text>
+        )}
+        <Text style={homeStyles.itemMetaInv}>
+          <Ionicons name="folder-outline" size={11} /> {asset.inventoryName}
+        </Text>
       </View>
     </View>
   </TouchableOpacity>
-);
+));
 
 // ─── Modal de filtros ─────────────────────────────────────────────────────────
 
@@ -473,78 +518,80 @@ interface FilterModalProps {
   onClose: () => void;
 }
 
-const FilterModal = ({
-  visible,
-  filters,
-  availableTipos,
-  availableLocals,
-  onChange,
-  onApply,
-  onClear,
-  onClose,
-}: FilterModalProps) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <TouchableOpacity style={homeStyles.modalOverlay} activeOpacity={1} onPress={onClose} />
-    <View style={homeStyles.modalSheet}>
-      <View style={homeStyles.modalHandle} />
-      <Text style={homeStyles.modalTitle}>Filtros</Text>
+const FilterModal = React.memo(
+  ({
+    visible,
+    filters,
+    availableTipos,
+    availableLocals,
+    onChange,
+    onApply,
+    onClear,
+    onClose,
+  }: FilterModalProps) => (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={homeStyles.modalOverlay} activeOpacity={1} onPress={onClose} />
+      <View style={homeStyles.modalSheet}>
+        <View style={homeStyles.modalHandle} />
+        <Text style={homeStyles.modalTitle}>Filtros</Text>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={homeStyles.filterGroupLabel}>Tipo / Status</Text>
-        <View style={homeStyles.filterOptions}>
-          {['', ...availableTipos].map((val) => (
-            <TouchableOpacity
-              key={val || '__all_tipo'}
-              style={[
-                homeStyles.filterOption,
-                filters.tipo === val && homeStyles.filterOptionActive,
-              ]}
-              onPress={() => onChange({ ...filters, tipo: val })}
-            >
-              <Text
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Text style={homeStyles.filterGroupLabel}>Tipo / Status</Text>
+          <View style={homeStyles.filterOptions}>
+            {['', ...availableTipos].map((val) => (
+              <TouchableOpacity
+                key={val || '__all_tipo'}
                 style={[
-                  homeStyles.filterOptionText,
-                  filters.tipo === val && homeStyles.filterOptionTextActive,
+                  homeStyles.filterOption,
+                  filters.tipo === val && homeStyles.filterOptionActive,
                 ]}
+                onPress={() => onChange({ ...filters, tipo: val })}
               >
-                {val || 'Todos'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+                <Text
+                  style={[
+                    homeStyles.filterOptionText,
+                    filters.tipo === val && homeStyles.filterOptionTextActive,
+                  ]}
+                >
+                  {val || 'Todos'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-        <Text style={homeStyles.filterGroupLabel}>Local / Sala</Text>
-        <View style={homeStyles.filterOptions}>
-          {['', ...availableLocals].map((val) => (
-            <TouchableOpacity
-              key={val || '__all_local'}
-              style={[
-                homeStyles.filterOption,
-                filters.local === val && homeStyles.filterOptionActive,
-              ]}
-              onPress={() => onChange({ ...filters, local: val })}
-            >
-              <Text
+          <Text style={homeStyles.filterGroupLabel}>Local / Sala</Text>
+          <View style={homeStyles.filterOptions}>
+            {['', ...availableLocals].map((val) => (
+              <TouchableOpacity
+                key={val || '__all_local'}
                 style={[
-                  homeStyles.filterOptionText,
-                  filters.local === val && homeStyles.filterOptionTextActive,
+                  homeStyles.filterOption,
+                  filters.local === val && homeStyles.filterOptionActive,
                 ]}
+                onPress={() => onChange({ ...filters, local: val })}
               >
-                {val || 'Todos'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+                <Text
+                  style={[
+                    homeStyles.filterOptionText,
+                    filters.local === val && homeStyles.filterOptionTextActive,
+                  ]}
+                >
+                  {val || 'Todos'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
 
-      <View style={homeStyles.modalActions}>
-        <TouchableOpacity style={homeStyles.btnClear} onPress={onClear}>
-          <Text style={homeStyles.btnClearText}>Limpar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={homeStyles.btnApply} onPress={onApply}>
-          <Text style={homeStyles.btnApplyText}>Aplicar filtros</Text>
-        </TouchableOpacity>
+        <View style={homeStyles.modalActions}>
+          <TouchableOpacity style={homeStyles.btnClear} onPress={onClear}>
+            <Text style={homeStyles.btnClearText}>Limpar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={homeStyles.btnApply} onPress={onApply}>
+            <Text style={homeStyles.btnApplyText}>Aplicar filtros</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  </Modal>
+    </Modal>
+  )
 );

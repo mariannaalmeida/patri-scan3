@@ -9,7 +9,7 @@
 import { AssetItem, Inventory, isScannedItem } from '../types/types';
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 
-// ─── Tipos de saída ───────────────────────────────────────────────────────────
+// ─── Tipos de saída
 
 export interface OverallStats {
   total: number;
@@ -49,7 +49,7 @@ export interface InventoryReport {
   foundItems: AssetItem[];
 }
 
-// ─── Serviço ──────────────────────────────────────────────────────────────────
+// ─── Serviço
 
 export class AnalyticsService {
   /**
@@ -105,7 +105,7 @@ export class AnalyticsService {
     return { total, found, pending, progressPct, startedAt, completedAt, durationMinutes };
   }
 
-  // ─── Agrupamento por campo ─────────────────────────────────────────────────
+  // Agrupamento por campo
 
   private static computeByGroup(
     inventory: Inventory,
@@ -135,7 +135,7 @@ export class AnalyticsService {
       .sort((a, b) => b.total - a.total);
   }
 
-  // ─── Timeline ──────────────────────────────────────────────────────────────
+  // Timeline
 
   private static computeTimeline(
     foundItems: (AssetItem & { found: true; scanDate: string })[],
@@ -159,7 +159,7 @@ export class AnalyticsService {
       });
   }
 
-  // ─── Helpers de formatação (wrappers dos utilitários) ─────────────────────
+  // ─── Helpers de formatação (wrappers dos utilitários)
 
   static formatDate(iso: string): string {
     return formatDisplayDate(iso);

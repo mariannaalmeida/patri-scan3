@@ -12,37 +12,45 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { InventoryReport, AnalyticsService } from './AnalyticsService';
 import { ChartService } from './ChartService';
+import { Result } from '../types/types';
+import { handleServiceError } from '../utils/errorUtils';
+import { escapeHtml, checkIconSVG } from '../utils/htmlUtils';
 
 export class ReportService {
   /**
    * Gera o PDF completo e abre o Share Sheet.
    */
-  static async exportPDF(report: InventoryReport): Promise<void> {
-    const html = this.buildHTML(report);
-    const { uri } = await Print.printToFileAsync({ html, base64: false });
+  static async exportPDF(report: InventoryReport): Promise<Result<void>> {
+    return handleServiceError(async () => {
+      const html = this.buildHTML(report);
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
 
-    const canShare = await Sharing.isAvailableAsync();
-    if (canShare) {
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        throw new Error('Compartilhamento não disponível neste dispositivo.');
+      }
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
         dialogTitle: `Relatório — ${report.inventoryName}`,
         UTI: 'com.adobe.pdf',
       });
-    }
+    }, 'EXPORT_WRITE_FAILED');
   }
 
   /**
    * Abre o preview de impressão nativo (iOS/Android).
    */
-  static async printPreview(report: InventoryReport): Promise<void> {
-    const html = this.buildHTML(report);
-    await Print.printAsync({ html });
+  static async printPreview(report: InventoryReport): Promise<Result<void>> {
+    return handleServiceError(async () => {
+      const html = this.buildHTML(report);
+      await Print.printAsync({ html });
+    }, 'EXPORT_WRITE_FAILED');
   }
 
   // ─── Builder HTML ──────────────────────────────────────────────────────────
 
   private static buildHTML(report: InventoryReport): string {
-    const { overall, byDepartament, byLocation, scanTimeline, notFoundItems } = report;
+    const { overall, byDepartment, byLocation, scanTimeline, notFoundItems } = report;
 
     const pieSvg = ChartService.buildPieChart({
       found: overall.found,
@@ -51,7 +59,7 @@ export class ReportService {
     });
 
     const timelineSvg = ChartService.buildTimelineChart(scanTimeline, 480, 130);
-    const deptSvg = ChartService.buildBarChart(byDepartament, 480, 150);
+    const deptSvg = ChartService.buildBarChart(byDepartment, 480, 150);
     const localSvg = ChartService.buildBarChart(byLocation, 480, 150);
 
     const generatedAt = AnalyticsService.formatDateTime(report.generatedAt);
@@ -153,9 +161,11 @@ export class ReportService {
     <h1>${escapeHtml(report.inventoryName)}</h1>
     <div class="header-meta">
       Relatório gerado em ${generatedAt}
-      ${overall.durationMinutes !== null
-        ? ` · Duração do inventário: ${overall.durationMinutes} min`
-        : ''}
+      ${
+        overall.durationMinutes !== null
+          ? ` · Duração do inventário: ${overall.durationMinutes} min`
+          : ''
+      }
     </div>
   </div>
 
@@ -182,12 +192,14 @@ export class ReportService {
       </div>
       <div class="progress-label">${overall.progressPct}% concluído</div>
     </div>
-    ${overall.startedAt
-      ? `<p style="font-size:11px;color:#6B6B88;margin-top:8px;">
+    ${
+      overall.startedAt
+        ? `<p style="font-size:11px;color:#6B6B88;margin-top:8px;">
            Início: ${AnalyticsService.formatDateTime(overall.startedAt)}
            ${overall.completedAt ? ` · Conclusão: ${AnalyticsService.formatDateTime(overall.completedAt)}` : ''}
          </p>`
-      : ''}
+        : ''
+    }
   </div>
 
   <!-- Distribuição (pizza + top departamentos) -->
@@ -197,11 +209,16 @@ export class ReportService {
       <div class="pie-box">${pieSvg}</div>
       <div class="chart-box">
         <p style="font-size:11px;color:#6B6B88;margin-bottom:12px;">
-          ${overall.progressPct === 100
-            ? '✓ Todos os itens foram localizados.'
-            : `Faltam <strong>${overall.pending}</strong> ite${overall.pending === 1 ? 'm' : 'ns'} para concluir.`}
+          ${
+            overall.progressPct === 100
+              ? `${checkIconSVG()} Todos os itens foram localizados.`
+              : `Faltam <strong>${overall.pending}</strong> ite${overall.pending === 1 ? 'm' : 'ns'} para concluir.`
+          }
         </p>
-        ${byDepartament.slice(0, 5).map((g) => `
+        ${byDepartment
+          .slice(0, 5)
+          .map(
+            (g) => `
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">
             <span style="color:#2a2a3e;font-weight:600;">${escapeHtml(g.label)}</span>
@@ -210,104 +227,144 @@ export class ReportService {
           <div class="progress-track" style="height:5px;">
             <div class="progress-fill" style="width:${g.progressPct}%;background:${g.progressPct === 100 ? '#00E5A0' : '#534AB7'}"></div>
           </div>
-        </div>`).join('')}
+        </div>`
+          )
+          .join('')}
       </div>
     </div>
   </div>
 
   <!-- Linha do tempo -->
-  ${scanTimeline.length > 0 ? `
+  ${
+    scanTimeline.length > 0
+      ? `
   <div class="section">
     <div class="section-title">Linha do tempo de scans</div>
     <div class="chart-dark">${timelineSvg}</div>
     <p style="font-size:10px;color:#6B6B88;margin-top:6px;">
       ${scanTimeline.length} itens escaneados
       ${overall.durationMinutes !== null ? `em ${overall.durationMinutes} minutos` : ''}
-      · Média: ${overall.durationMinutes !== null && scanTimeline.length > 0
-        ? ((overall.durationMinutes / scanTimeline.length) * 60).toFixed(0) + 's por item'
-        : 'N/D'}
+      · Média: ${
+        overall.durationMinutes !== null && scanTimeline.length > 0
+          ? ((overall.durationMinutes / scanTimeline.length) * 60).toFixed(0) + 's por item'
+          : 'N/D'
+      }
     </p>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
   <!-- Por departamento -->
-  ${byDepartament.length > 0 ? `
+  ${
+    byDepartment.length > 0
+      ? `
   <div class="section">
     <div class="section-title">Progresso por departamento</div>
     <div class="chart-dark">${deptSvg}</div>
     <table class="group-table" style="margin-top:10px;">
       <thead><tr><th>Departamento</th><th>Total</th><th>Encontrados</th><th>Pendentes</th><th>%</th></tr></thead>
       <tbody>
-        ${byDepartament.map((g) => `<tr>
+        ${byDepartment
+          .map(
+            (g) => `<tr>
           <td>${escapeHtml(g.label)}</td>
           <td>${g.total}</td>
           <td>${g.found}</td>
           <td>${g.pending}</td>
           <td class="pct">${g.progressPct}%</td>
-        </tr>`).join('')}
+        </tr>`
+          )
+          .join('')}
       </tbody>
     </table>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
   <!-- Por localização -->
-  ${byLocation.length > 0 ? `
+  ${
+    byLocation.length > 0
+      ? `
   <div class="section">
     <div class="section-title">Progresso por localização</div>
     <div class="chart-dark">${localSvg}</div>
     <table class="group-table" style="margin-top:10px;">
       <thead><tr><th>Localização</th><th>Total</th><th>Encontrados</th><th>Pendentes</th><th>%</th></tr></thead>
       <tbody>
-        ${byLocation.map((g) => `<tr>
+        ${byLocation
+          .map(
+            (g) => `<tr>
           <td>${escapeHtml(g.label)}</td>
           <td>${g.total}</td>
           <td>${g.found}</td>
           <td>${g.pending}</td>
           <td class="pct">${g.progressPct}%</td>
-        </tr>`).join('')}
+        </tr>`
+          )
+          .join('')}
       </tbody>
     </table>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
   <!-- Itens não encontrados -->
-  ${notFoundItems.length > 0 ? `
+  ${
+    notFoundItems.length > 0
+      ? `
   <div class="section">
     <div class="section-title">Itens não encontrados (${notFoundItems.length})</div>
     <table>
       <thead><tr><th>Código</th><th>Descrição</th><th>Departamento</th><th>Localização</th></tr></thead>
       <tbody>
-        ${notFoundItems.map((item) => `<tr>
+        ${notFoundItems
+          .map(
+            (item) => `<tr>
           <td class="code">${escapeHtml(item.code)}</td>
           <td>${escapeHtml(item.description ?? '—')}</td>
           <td>${escapeHtml(item.department ?? '—')}</td>
           <td>${escapeHtml(item.location ?? '—')}</td>
-        </tr>`).join('')}
+        </tr>`
+          )
+          .join('')}
       </tbody>
     </table>
-  </div>` : `
+  </div>`
+      : `
   <div class="section">
     <div class="section-title">Itens não encontrados</div>
     <p style="color:#00C87A;font-weight:600;font-size:12px;">
-      ✓ Todos os itens foram localizados com sucesso.
+       ${checkIconSVG()} Todos os itens foram localizados com sucesso.
     </p>
-  </div>`}
+  </div>`
+  }
 
   <!-- Histórico de scans -->
-  ${scanTimeline.length > 0 ? `
+  ${
+    scanTimeline.length > 0
+      ? `
   <div class="section">
     <div class="section-title">Histórico de scans</div>
     <table>
       <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Localização</th><th>Horário</th><th>Min.</th></tr></thead>
       <tbody>
-        ${scanTimeline.map((e, i) => `<tr>
+        ${scanTimeline
+          .map(
+            (e, i) => `<tr>
           <td style="color:#9B9BAA;">${i + 1}</td>
           <td class="code">${escapeHtml(e.code)}</td>
           <td>${escapeHtml(e.description || '—')}</td>
           <td>${escapeHtml(e.location || '—')}</td>
           <td>${AnalyticsService.formatTime(e.scanDate)}</td>
           <td style="color:#9B9BAA;">+${e.minutesFromStart}min</td>
-        </tr>`).join('')}
+        </tr>`
+          )
+          .join('')}
       </tbody>
     </table>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
   <div class="footer">
     PatriScan · Relatório gerado automaticamente em ${generatedAt}
@@ -317,14 +374,4 @@ export class ReportService {
 </body>
 </html>`;
   }
-}
-
-// ─── Helper de escape HTML ────────────────────────────────────────────────────
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

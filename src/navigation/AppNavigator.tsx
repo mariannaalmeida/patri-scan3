@@ -14,7 +14,8 @@ import { InventoryDetailScreen } from '../screens/InventoryDetailScreen';
 import { ManualInventoryScreen } from '../screens/ManualInventoryScreen';
 import { ReportDetailScreen } from '../screens/ReportDetailScreen';
 import { ReportsScreen } from '../screens/ReportsScreen';
-import { ScannerScreen } from '../screens/ScannerScreen ';
+import { ScannerScreen } from '../screens/ScannerScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -40,7 +41,7 @@ export const AppNavigator = () => {
         <Stack.Screen name="ImportInventory" component={ImportInventoryScreen} />
         <Stack.Screen name="ManualInventory" component={ManualInventoryScreen} />
         {/* Telas de configuração */}
-        // TO DO
+        <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

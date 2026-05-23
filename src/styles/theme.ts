@@ -2020,21 +2020,42 @@ export const createInventoryStyles = StyleSheet.create({
     marginBottom: 4,
   },
   progressBar: {
-    height: 4,
+    width: '100%',
+    height: 8,
     backgroundColor: colors.surface2,
-    borderRadius: 2,
-    marginTop: 20,
+    borderRadius: 4,
     overflow: 'hidden',
+    marginBottom: 8,
   },
   progressFill: {
     height: '100%',
     backgroundColor: colors.accent,
+    borderRadius: 4,
   },
   errorText: {
     color: colors.accentErr,
     fontSize: 14,
     textAlign: 'center',
     marginTop: 10,
+  },
+  processingBox: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  processingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+
+  progressPercent: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accent,
   },
 });
 

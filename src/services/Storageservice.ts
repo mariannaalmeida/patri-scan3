@@ -8,6 +8,7 @@ import {
   Result,
   InventorySchema,
   isScannedItem,
+  AppSettings,
 } from '../types/types';
 import { toISODate } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
@@ -412,4 +413,48 @@ export class StorageService {
       return inventory;
     }, 'STORAGE_WRITE_FAILED');
   }
+
+// Configurações
+static async getSettings(): Promise<Result<AppSettings | null>> {
+  return handleServiceError(async () => {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
+    if (!raw) return null;
+    return JSON.parse(raw) as AppSettings;
+  }, 'STORAGE_READ_FAILED');  // ou um código específico como 'SETTINGS_READ_FAILED'
+}
+
+static async saveSettings(settings: AppSettings): Promise<Result<void>> {
+  return handleServiceError(async () => {
+    await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+  }, 'STORAGE_WRITE_FAILED');
+}
+
+// Limpeza total
+static async clearAllData(): Promise<Result<void>> {
+  return handleServiceError(async () => {
+    // 1. Remove todos os inventários
+    const idsResult = await this.getInventories();
+
+    // Disparando um Error nativo para o handleServiceError capturar
+    if (!idsResult.ok) throw new Error(idsResult.error.message);
+    await Promise.all(
+      idsResult.value.map(async (id) => {
+        const del = await this.deleteInventory(id);
+        if (!del.ok) console.warn(`Erro ao deletar ${id}:`, del.error.message);
+      })
+    );
+
+    // 2. Limpa chaves do AsyncStorage
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.INVENTORIES_INDEX,
+      STORAGE_KEYS.SETTINGS,
+      STORAGE_KEYS.LAST_BACKUP,
+    ]);
+
+    // 3. Remove diretório raiz (opcional)
+    const root = this.getRootDirectory();
+    if (root.exists) root.delete();
+  }, 'STORAGE_DELETE_FAILED');
+}
+  
 }
