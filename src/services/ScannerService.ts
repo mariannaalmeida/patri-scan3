@@ -11,8 +11,8 @@ export interface ScanMatch {
 }
 
 export class ScannerService {
-  private static normalizeCode(code: string): string {
-    return String(code).trim().toLowerCase().replace(/^0+/, '');
+  public static normalizeCode(code: string): string {
+    return String(code).trim().replace(/\s+/g, '').toUpperCase();
   }
 
   /**
@@ -22,20 +22,29 @@ export class ScannerService {
   static findItemByCode(code: string, inventory: Inventory): ScanMatch {
     const normalizedScannedCode = this.normalizeCode(code);
 
-    const item = inventory.items.find((i) => this.normalizeCode(i.code) == normalizedScannedCode);
+    const item = inventory.items.find(
+      (item) => this.normalizeCode(item.code) === normalizedScannedCode
+    );
 
     if (!item) {
-      return { status: 'not_found', code: String(code).trim() };
+      return {
+        status: 'not_found',
+        code,
+      };
     }
 
-    // Verifica se o item já foi escaneado (found === true)
-    if (item.found) {
-      return { status: 'already_scanned', item, code: item.code };
-    }
-
-    return { status: 'found', item, code: item.code };
+    return item.found
+      ? {
+          status: 'already_scanned',
+          item,
+          code: item.code,
+        }
+      : {
+          status: 'found',
+          item,
+          code: item.code,
+        };
   }
-
   /**
    * Confirma o scan de um item: marca como encontrado e persiste.
    * Retorna o inventário atualizado e o ScanResult.

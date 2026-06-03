@@ -157,12 +157,13 @@ export const ScannerScreen = () => {
         console.log('[Scanner] Código capturado:', code);
       }
 
-      const trimmed = code.trim();
-      if (!ScannerService.validateCode(trimmed)) return;
+      const normalizedCode = ScannerService.normalizeCode(code);
 
-      if (scanCooldown.current || lastScannedCode.current === trimmed) return;
+      if (!ScannerService.validateCode(normalizedCode)) return;
+
+      if (scanCooldown.current || lastScannedCode.current === normalizedCode) return;
       scanCooldown.current = true;
-      lastScannedCode.current = trimmed;
+      lastScannedCode.current = normalizedCode;
 
       scanCooldownTimeout.current = setTimeout(() => {
         scanCooldown.current = false;
@@ -170,7 +171,7 @@ export const ScannerScreen = () => {
         scanCooldownTimeout.current = null;
       }, 1500);
 
-      const match = ScannerService.findItemByCode(trimmed, inventory);
+      const match = ScannerService.findItemByCode(normalizedCode, inventory);
       const feedback = ScannerService.getFeedback(match);
 
       if (match.status === 'found' && match.item) {
@@ -589,6 +590,12 @@ interface ConfirmModalProps {
 }
 
 const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: ConfirmModalProps) => {
+  const STATUS_LABELS = {
+    good: 'Bom estado',
+    damaged: 'Danificado',
+    missing: 'Extraviado',
+    in_repair: 'Em manutenção',
+  };
   const customFieldsEntries = item?.customFields ? Object.entries(item.customFields) : [];
 
   return (
@@ -617,10 +624,21 @@ const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: Confirm
                 <DetailRow icon="business-outline" label="Departamento" value={item.department} />
               ) : null}
               {item.status ? (
-                <DetailRow icon="information-circle-outline" label="Status" value={item.status} />
+                <DetailRow
+                  icon="information-circle-outline"
+                  label="Status"
+                  value={STATUS_LABELS[item.status]}
+                />
               ) : null}
               {item.value ? (
-                <DetailRow icon="cash-outline" label="Valor" value={`R$ ${item.value}`} />
+                <DetailRow
+                  icon="cash-outline"
+                  label="Valor"
+                  value={new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  }).format(item.value)}
+                />
               ) : null}
               {customFieldsEntries.map(([key, value]) => (
                 <DetailRow key={key} icon="star-outline" label={key} value={value} />

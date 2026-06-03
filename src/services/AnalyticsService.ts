@@ -111,16 +111,16 @@ export class AnalyticsService {
     inventory: Inventory,
     field: 'department' | 'location'
   ): GroupStat[] {
-    // Set rápido de códigos encontrados
-    const foundCodes = new Set(inventory.items.filter((i) => i.found).map((i) => i.code));
-
     const groups = new Map<string, { total: number; found: number }>();
 
     for (const item of inventory.items) {
       const key = item[field]?.trim() || '(não informado)';
       const existing = groups.get(key) ?? { total: 0, found: 0 };
       existing.total++;
-      if (foundCodes.has(item.code)) existing.found++;
+
+      // Verificação direta, sem necessidade de Set adicional
+      if (item.found) existing.found++;
+
       groups.set(key, existing);
     }
 
