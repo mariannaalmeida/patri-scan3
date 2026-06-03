@@ -1,23 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
 import {
+  AppSettings,
   AssetItem,
   Inventory,
   InventoryMetadata,
-  InventoryStats,
-  Result,
   InventorySchema,
+  InventoryStats,
   isScannedItem,
-  AppSettings,
+  Result,
 } from '../types/types';
 import { toISODate } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
 import { generateBasicSchema } from '../utils/schemaUtils';
 
 const STORAGE_KEYS = {
-  INVENTORIES_INDEX: '@patri_sacan3:inventories_index',
-  SETTINGS: '@patri_sacan3:settings',
-  LAST_BACKUP: '@patri_sacan3:last_backup',
+  INVENTORIES_INDEX: '@patri_scan3:inventories_index',
+  SETTINGS: '@patri_scan3:settings',
+  LAST_BACKUP: '@patri_scan3:last_backup',
 } as const;
 
 export class StorageService {
@@ -27,6 +27,13 @@ export class StorageService {
     const random = Math.random().toString(36).substring(2, 10);
     return `inv_${timestamp}_${random}`;
   }
+
+  // ------ Constantes privadas
+
+  private static readonly DEFAULT_SCHEMA: InventorySchema = {
+    version: '1.0',
+    fields: [],
+  };
 
   // --- Helpers privados ---
 
@@ -64,10 +71,16 @@ export class StorageService {
   // Validação de ID (security)
   private static isValidId(id: string): boolean {
     // Previne path traversal e garante formato válido
-    return /^inv_\d+_[a-z0-9]+$/.test(id) || id === '0';
+    return /^inv_\d+_[a-z0-9]+$/.test(id);
   }
 
   // --- Métodos públicos ---
+
+  // Validação de ID (security)
+  public static isValidInventoryId(id: string): boolean {
+    // Previne path traversal e garante formato válido
+    return /^inv_\d+_[a-z0-9]+$/.test(id);
+  }
 
   static async getInventories(): Promise<Result<string[]>> {
     return handleServiceError(async () => {
@@ -150,7 +163,7 @@ export class StorageService {
 
       const itemsFile = new File(dir, 'items.json');
       const metadataFile = new File(dir, 'metadata.json');
-      const schemaFile = new File(dir, 'schema.json'); //  NOVO: Criar arquivo do schema
+      const schemaFile = new File(dir, 'schema.json');
 
       //  Usa toISODate para garantir o tipo ISODateString
       const metadataWithTimestamp = {
@@ -167,13 +180,12 @@ export class StorageService {
       const listResult = await this.getInventories();
       if (!listResult.ok) throw listResult.error;
 
-      const list = listResult.value;
-      if (!list.includes(inventory.metadata.id)) {
-        await AsyncStorage.setItem(
-          STORAGE_KEYS.INVENTORIES_INDEX,
-          JSON.stringify([...list, inventory.metadata.id])
-        );
-      }
+      const currentSet = new Set(listResult.value);
+      currentSet.add(inventory.metadata.id);
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.INVENTORIES_INDEX,
+        JSON.stringify(Array.from(currentSet))
+      );
     }, 'STORAGE_WRITE_FAILED');
   }
 
@@ -187,17 +199,19 @@ export class StorageService {
         const dir = this.getInventoryDirectory(id);
         const itemsFile = new File(dir, 'items.json');
         const metadataFile = new File(dir, 'metadata.json');
-        const schemaFile = new File(dir, 'schema.json'); //  NOVO: Referência ao schema
+        const schemaFile = new File(dir, 'schema.json');
 
         if (!itemsFile.exists || !metadataFile.exists) {
           throw new Error(`Arquivos do inventário (ID: ${id}) não encontrados.`);
         }
 
-        //  NOVO: Lê o schema se existir, senão retorna um JSON de fallback vazio
+        //  Lê o schema se existir, senão retorna um JSON de fallback vazio
         const [itemsRaw, metadataRaw, schemaRaw] = await Promise.all([
           itemsFile.text(),
           metadataFile.text(),
-          schemaFile.exists ? schemaFile.text() : Promise.resolve('{"version":"1.0","fields":[]}'),
+          schemaFile.exists
+            ? schemaFile.text()
+            : Promise.resolve(JSON.stringify(this.DEFAULT_SCHEMA)),
         ]);
 
         const items = this.safeJSONParse<AssetItem[]>(itemsRaw, []);
@@ -205,11 +219,8 @@ export class StorageService {
           metadataRaw,
           `metadados do inventário ID: ${id}`
         );
-        //  NOVO: Faz o parse do schema de forma segura
-        const schema = this.safeJSONParse<InventorySchema>(schemaRaw, {
-          version: '1.0',
-          fields: [],
-        });
+        //  Faz o parse do schema de forma segura
+        const schema = this.safeJSONParse<InventorySchema>(schemaRaw, this.DEFAULT_SCHEMA);
 
         return { items, metadata, schema };
       },
@@ -311,7 +322,6 @@ export class StorageService {
     );
   }
 
-  // Método corrigido - getInventoryStats
   static async getInventoryStats(id: string): Promise<Result<InventoryStats>> {
     return handleServiceError(
       async () => {
@@ -323,7 +333,7 @@ export class StorageService {
         const total = metadata.totalItems;
         const scannedCount = items.filter((i) => i.found).length;
 
-        // ✅ Usa toISODate para converter para ISODateString
+        //  Usa toISODate para converter para ISODateString
         // Se lastModified existe, converte; senão, usa importDate
         const lastModified = metadata.lastModified
           ? toISODate(metadata.lastModified)
@@ -333,7 +343,7 @@ export class StorageService {
           totalItems: total,
           scannedItems: scannedCount,
           progress: total > 0 ? Math.round((scannedCount / total) * 100) : 0,
-          lastModified, //  ISODateString
+          lastModified,
         };
       },
       'STORAGE_READ_FAILED',
@@ -355,10 +365,10 @@ export class StorageService {
           importDate: now,
           totalItems: items.length,
           status: 'active',
-          lastModified: now, //  ISODateString
+          lastModified: now,
         },
         //  Adicionado o schema padrão para satisfazer a interface Inventory
-         schema: generateBasicSchema(items),
+        schema: generateBasicSchema(items),
       };
 
       const saveResult = await this.saveInventory(newInventory);
@@ -389,12 +399,16 @@ export class StorageService {
       const inventory = this.safeJSONParseOrThrow<Inventory>(jsonData, 'importação');
 
       // PROTEÇÃO: Se o backup for de uma versão antiga e não tiver schema,
-      // inicializamos com um padrão para evitar erros de tipagem/execução.
+      // validação mínima do objeto importado
+      if (!inventory.items || !Array.isArray(inventory.items)) {
+        throw new Error('JSON inválido: "items" ausente ou não é um array');
+      }
+      if (!inventory.metadata?.name) {
+        throw new Error('JSON inválido: "metadata.name" ausente');
+      }
+
       if (!inventory.schema) {
-        inventory.schema = {
-          version: '1.0',
-          fields: [],
-        };
+        inventory.schema = this.DEFAULT_SCHEMA;
       }
 
       // Gera novo ID para evitar conflitos com inventários existentes no aparelho
@@ -414,47 +428,68 @@ export class StorageService {
     }, 'STORAGE_WRITE_FAILED');
   }
 
-// Configurações
-static async getSettings(): Promise<Result<AppSettings | null>> {
-  return handleServiceError(async () => {
-    const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
-    if (!raw) return null;
-    return JSON.parse(raw) as AppSettings;
-  }, 'STORAGE_READ_FAILED');  // ou um código específico como 'SETTINGS_READ_FAILED'
-}
+  // Configurações
+  static readonly DEFAULT_SETTINGS: AppSettings = {
+    soundEnabled: false,
+    vibrationEnabled: true,
+    flashEnabled: false,
+    theme: 'light',
+  };
 
-static async saveSettings(settings: AppSettings): Promise<Result<void>> {
-  return handleServiceError(async () => {
-    await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-  }, 'STORAGE_WRITE_FAILED');
-}
+  static async getSettings(): Promise<Result<AppSettings>> {
+    return handleServiceError(async () => {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
 
-// Limpeza total
-static async clearAllData(): Promise<Result<void>> {
-  return handleServiceError(async () => {
-    // 1. Remove todos os inventários
-    const idsResult = await this.getInventories();
+      if (!raw) {
+        return this.DEFAULT_SETTINGS;
+      }
 
-    // Disparando um Error nativo para o handleServiceError capturar
-    if (!idsResult.ok) throw new Error(idsResult.error.message);
-    await Promise.all(
-      idsResult.value.map(async (id) => {
-        const del = await this.deleteInventory(id);
-        if (!del.ok) console.warn(`Erro ao deletar ${id}:`, del.error.message);
-      })
-    );
+      return {
+        ...this.DEFAULT_SETTINGS,
+        ...JSON.parse(raw),
+      };
+    }, 'STORAGE_READ_FAILED');
+  }
 
-    // 2. Limpa chaves do AsyncStorage
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.INVENTORIES_INDEX,
-      STORAGE_KEYS.SETTINGS,
-      STORAGE_KEYS.LAST_BACKUP,
-    ]);
+  static async saveSettings(settings: AppSettings): Promise<Result<void>> {
+    return handleServiceError(async () => {
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.SETTINGS,
+        JSON.stringify({
+          ...this.DEFAULT_SETTINGS,
+          ...settings,
+        })
+      );
+    }, 'STORAGE_WRITE_FAILED');
+  }
 
-    // 3. Remove diretório raiz (opcional)
-    const root = this.getRootDirectory();
-    if (root.exists) root.delete();
-  }, 'STORAGE_DELETE_FAILED');
-}
-  
+  // Limpeza total
+  static async clearAllData(): Promise<Result<void>> {
+    return handleServiceError(async () => {
+      // 1. Remove todos os inventários
+      const idsResult = await this.getInventories();
+      // Disparando um Error nativo para o handleServiceError capturar
+      if (!idsResult.ok) throw new Error(idsResult.error.message);
+
+      const results = await Promise.allSettled(
+        idsResult.value.map((id) => this.deleteInventory(id))
+      );
+
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      if (failures.length > 0) {
+        console.warn('Alguns inventários não puderam ser resolvidos: ', failures.length);
+      }
+
+      // 2. Limpa chaves do AsyncStorage
+      await AsyncStorage.multiRemove([
+        STORAGE_KEYS.INVENTORIES_INDEX,
+        STORAGE_KEYS.SETTINGS,
+        STORAGE_KEYS.LAST_BACKUP,
+      ]);
+
+      // 3. Remove diretório raiz (opcional)
+      const root = this.getRootDirectory();
+      if (root.exists) root.delete();
+    }, 'STORAGE_DELETE_FAILED');
+  }
 }
