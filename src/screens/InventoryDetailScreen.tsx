@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -12,11 +13,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { ScannerService } from '../services/ScannerService';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles, inventoryDetailStyles } from '../styles/theme';
-import { AssetItem, Inventory, RootStackParamList } from '../types/types';
+import { AssetItem, Inventory, RootStackParamList, isScannedItem } from '../types/types';
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'InventoryDetail'>;
@@ -24,10 +24,9 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 type FilterTab = 'all' | 'pending' | 'scanned';
 
-// Type guard (poderia ser importado, mas coloco aqui para completude)
-const isScannedItem = (item: AssetItem): item is AssetItem & { found: true } => {
-  return item.found === true;
-};
+// FIX: Removida a definição local duplicada de isScannedItem.
+// A função já existe em types/types.ts e o comentário original admitia
+// que deveria ser importada. Duas definições idênticas divergem silenciosamente.
 
 export const InventoryDetailScreen = () => {
   const navigation = useNavigation<NavProp>();
@@ -76,7 +75,6 @@ export const InventoryDetailScreen = () => {
   // ─── Itens filtrados e pesquisados ───────────────────────────
   const filteredItems = useMemo(() => {
     if (!inventory) return [];
-    // Não precisamos acrescentar isScanned artificialmente; usamos o type guard no render.
     let result = inventory.items;
 
     if (filter === 'pending') result = result.filter((i) => !i.found);
@@ -138,31 +136,37 @@ export const InventoryDetailScreen = () => {
           text: 'Resetar',
           style: 'destructive',
           onPress: async () => {
-            let hasError = false;
-            for (const item of inventory.items) {
-              if (item.found) {
-                const result = await StorageService.updateItemFoundStatus(
-                  inventory.metadata.id,
-                  item.code,
-                  false
-                );
-                if (!result.ok) {
-                  hasError = true;
-                  break;
-                }
-              }
-            }
-            if (hasError) {
+            // FIX: Antes fazia N leituras + N escritas em loop (uma por item escaneado).
+            // Agora modifica todos os itens em memória de uma vez e salva apenas uma vez,
+            // reduzindo de O(n) operações de disco para O(1).
+            const resetItems = inventory.items.map((item) => {
+              if (!item.found) return item;
+              // Remove scanDate se existir (união discriminada: found:false não tem scanDate)
+              const { scanDate: _, ...base } = item as AssetItem & { scanDate?: string };
+              return { ...base, found: false as const };
+            });
+
+            const updatedInventory: Inventory = {
+              ...inventory,
+              items: resetItems,
+            };
+
+            const saveResult = await StorageService.saveInventory(updatedInventory);
+
+            if (!saveResult.ok) {
               Alert.alert('Erro', 'Não foi possível resetar completamente o inventário.');
-            } else {
-              await loadInventory(true);
-              Alert.alert('Sucesso', 'Inventário resetado com sucesso.');
+              return;
             }
+
+            // FIX: setInventory direto com o objeto já em memória, sem segunda leitura
+            // do disco. Alert só aparece após o estado ser atualizado.
+            setInventory(updatedInventory);
+            Alert.alert('Sucesso', 'Inventário resetado com sucesso.');
           },
         },
       ]
     );
-  }, [inventory, loadInventory]);
+  }, [inventory]);
 
   const handleDeleteInventory = useCallback(() => {
     if (!inventory) return;
@@ -189,6 +193,13 @@ export const InventoryDetailScreen = () => {
 
   const handleGoBack = () => navigation.goBack();
 
+  // FIX: onRefresh agora é async com await, garantindo que isRefreshing seja
+  // resetado pelo finally de loadInventory antes de encerrar o callback
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await loadInventory(true);
+  }, [loadInventory]);
+
   // ─── Loading e fallback ──────────────────────────────────────
   if (isLoading) {
     return (
@@ -201,7 +212,11 @@ export const InventoryDetailScreen = () => {
   }
 
   if (!inventory) return null;
-  const isComplete = progress?.percentage === 100;
+
+  // FIX: isComplete derivado de progress após os guards, com fallback explícito false.
+  // Antes usava progress?.percentage === 100 fora do escopo de certeza de progress,
+  // o que retornaria false silenciosamente se progress fosse null por razão inesperada.
+  const isComplete = progress !== null && progress.percentage === 100;
 
   // ─── Render principal ────────────────────────────────────────
   return (
@@ -338,7 +353,9 @@ export const InventoryDetailScreen = () => {
       {/* Lista de itens */}
       <FlatList
         data={filteredItems}
-        keyExtractor={(item, index) => `${item.code}-${index}`}
+        // FIX: key usa apenas item.code — único dentro de um inventário por definição.
+        // O index como parte da key causava reuso incorreto de componentes ao filtrar/ordenar.
+        keyExtractor={(item) => item.code}
         renderItem={({ item }) => <ItemRow item={item} />}
         contentContainerStyle={[
           inventoryDetailStyles.listContent,
@@ -347,10 +364,7 @@ export const InventoryDetailScreen = () => {
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => {
-              setIsRefreshing(true);
-              loadInventory(true);
-            }}
+            onRefresh={handleRefresh}
             tintColor={colors.accent}
             colors={[colors.accent]}
           />

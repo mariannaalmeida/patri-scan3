@@ -91,7 +91,7 @@ export const InventoryListScreen = () => {
     loadAllData(true);
   }, [loadAllData]);
 
-  // ✅ Delete usando ID
+  // Delete usando ID
   const handleDelete = useCallback(
     (id: string, name: string) => {
       Alert.alert(

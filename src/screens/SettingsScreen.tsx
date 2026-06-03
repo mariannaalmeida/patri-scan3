@@ -6,6 +6,7 @@
  * e oferece ações de gerenciamento de dados (limpeza total).
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
@@ -19,7 +20,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles } from '../styles/theme';
 import { AppSettings, RootStackParamList } from '../types/types';
@@ -43,7 +43,7 @@ export const SettingsScreen = () => {
       try {
         if (typeof StorageService.getSettings === 'function') {
           const result = await StorageService.getSettings();
-          
+
           // Verifica se o Result deu "ok" e se trouxe um valor
           if (result.ok && result.value) {
             setSettings(result.value);
@@ -57,26 +57,48 @@ export const SettingsScreen = () => {
   }, []);
 
   // Atualizar e salvar configuração
-  const toggleSetting = async (key: keyof AppSettings) => {
+  // Altere a assinatura da função para ignorar o 'theme'
+  const toggleSetting = async (key: 'soundEnabled' | 'vibrationEnabled' | 'flashEnabled') => {
     const newSettings = { ...settings, [key]: !settings[key] };
     setSettings(newSettings);
-    
+
     try {
-      // Salva no banco (se o método existir)
       if (typeof StorageService.saveSettings === 'function') {
         await StorageService.saveSettings(newSettings);
       }
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível salvar a configuração.');
-      // Reverte em caso de erro
-      setSettings(settings);
+      // Usar uma função de callback no setState é mais seguro para reverter
+      setSettings((prev) => ({ ...prev, [key]: !newSettings[key] }));
+    }
+  };
+
+  const toggleTheme = async () => {
+    const previousTheme = settings.theme;
+
+    const newSettings: AppSettings = {
+      ...settings,
+      theme: previousTheme === 'dark' ? 'light' : 'dark',
+    };
+
+    setSettings(newSettings);
+
+    try {
+      await StorageService.saveSettings(newSettings);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar a configuração.');
+
+      setSettings((prev) => ({
+        ...prev,
+        theme: previousTheme,
+      }));
     }
   };
 
   // ─── Botão do Pânico (Zerar App) ───
   const handleClearAllData = () => {
     Alert.alert(
-      '⚠️ ZERAR APLICATIVO',
+      ' ZERAR APLICATIVO',
       'Tem certeza absoluta? Isso apagará TODOS os inventários, itens e relatórios. Essa ação NÃO pode ser desfeita.',
       [
         { text: 'Cancelar', style: 'cancel' },
@@ -86,7 +108,7 @@ export const SettingsScreen = () => {
           onPress: async () => {
             try {
               // Limpa os dados via StorageService
-              await StorageService.clearAllData(); 
+              await StorageService.clearAllData();
               Alert.alert('Sucesso', 'Todos os dados foram apagados.');
               navigation.replace('Home'); // Volta pra Home limpa
             } catch (error) {
@@ -104,11 +126,18 @@ export const SettingsScreen = () => {
 
   return (
     <View style={commonStyles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar
+        barStyle={settings.theme === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.bg}
+      />
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity
+          onPress={handleGoBack}
+          style={styles.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Configurações</Text>
@@ -116,7 +145,6 @@ export const SettingsScreen = () => {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        
         {/* ── Seção: Scanner ── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ESCANEAMENTO</Text>
@@ -156,7 +184,7 @@ export const SettingsScreen = () => {
               label="Modo Escuro"
               description="Usar tema escuro no aplicativo"
               value={settings.theme === 'dark'}
-              onValueChange={() => toggleSetting('theme')}
+              onValueChange={toggleTheme}
             />
           </View>
         </View>
@@ -184,7 +212,6 @@ export const SettingsScreen = () => {
           <Text style={styles.appName}>PatriScan</Text>
           <Text style={styles.appVersion}>Versão 1.0.0</Text>
         </View>
-
       </ScrollView>
     </View>
   );
@@ -200,7 +227,13 @@ interface SettingToggleProps {
   onValueChange: () => void;
 }
 
-const SettingToggle = ({ icon, label, description, value, onValueChange }: SettingToggleProps) => (
+export const SettingToggle = ({
+  icon,
+  label,
+  description,
+  value,
+  onValueChange,
+}: SettingToggleProps) => (
   <View style={styles.settingRow}>
     <View style={styles.iconBox}>
       <Ionicons name={icon} size={20} color={colors.text} />

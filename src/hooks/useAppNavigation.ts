@@ -15,20 +15,20 @@ export const useAppNavigation = () => {
     navigation.navigate('InventoryDetail', { inventoryId, inventoryName });
   const goToScanner = (inventoryId: string) =>
     navigation.navigate('Scanner', { inventoryId });
-  
+
   // Navegação de relatórios
   const goToReports = () => navigation.navigate('Reports');
   const goToReportDetail = (inventoryId: string, inventoryName?: string) =>
     navigation.navigate('ReportDetail', { inventoryId, inventoryName });
-  
+
   // Navegação de criação
   const goToImportInventory = () => navigation.navigate('ImportInventory');
   const goToManualInventory = () => navigation.navigate('ManualInventory');
-  
+
   // Navegação de configurações
   const goToSettings = () => navigation.navigate('Settings');
- // const goToAbout = () => navigation.navigate('About');
-  
+
+
   // Voltar
   const goBack = () => navigation.goBack();
 
@@ -41,7 +41,6 @@ export const useAppNavigation = () => {
     goToImportInventory,
     goToManualInventory,
     goToSettings,
-    //goToAbout,
     goBack,
     navigation,
   };
