@@ -2,16 +2,17 @@
  * HomeScreen.tsx
  *
  * Tela inicial com lista de todos os bens patrimoniais de todos os inventários.
- * Agora compatível com os tipos atuais do PATRISCAN (AssetItem com união discriminada,
+ * Compatível com os tipos atuais do PATRISCAN (AssetItem com união discriminada,
  * StorageService baseado em Result, navegação por inventoryId).
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -22,10 +23,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles, homeStyles } from '../styles/theme';
-import { AssetItem, Inventory, RootStackParamList } from '../types/types';
+import { AssetItem, AssetStatus, Inventory, RootStackParamList } from '../types/types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -41,6 +41,14 @@ interface ActiveFilters {
 }
 
 const PAGE_SIZE = 20;
+
+// Mapa de rótulos legíveis para os valores internos de AssetStatus.
+const STATUS_LABELS: Record<AssetStatus, string> = {
+  good: 'Bom estado',
+  damaged: 'Danificado',
+  missing: 'Extraviado',
+  in_repair: 'Em manutenção',
+};
 
 export const HomeScreen = () => {
   const navigation = useNavigation<NavProp>();
@@ -59,6 +67,10 @@ export const HomeScreen = () => {
   const [filters, setFilters] = useState<ActiveFilters>({ tipo: '', local: '' });
   const [pendingFilters, setPendingFilters] = useState<ActiveFilters>({ tipo: '', local: '' });
 
+  // Ref para manter o valor mais recente de page sem incluí-lo nas dependências
+  const pageRef = useRef(page);
+  pageRef.current = page;
+
   // Debounce de busca
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -68,7 +80,6 @@ export const HomeScreen = () => {
     };
   }, [searchRaw]);
 
-  // Carregar inventários (usando Result do StorageService)
   const loadInventories = useCallback(async (): Promise<Inventory[]> => {
     const idsResult = await StorageService.getInventories();
     if (!idsResult.ok) {
@@ -88,7 +99,6 @@ export const HomeScreen = () => {
     return loaded.filter((inv): inv is Inventory => inv !== null);
   }, []);
 
-  // Achata todos os itens com flag isScanned (baseada em found)
   const buildFlatAssets = useCallback((invs: Inventory[]): FlatAsset[] => {
     return invs.flatMap((inv) =>
       inv.items.map((item) => ({
@@ -100,7 +110,6 @@ export const HomeScreen = () => {
     );
   }, []);
 
-  // Carga inicial e ao focar a tela
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -122,7 +131,6 @@ export const HomeScreen = () => {
     }, [loadInventories, buildFlatAssets])
   );
 
-  // Pull-to-refresh
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     const invs = await loadInventories();
@@ -134,17 +142,20 @@ export const HomeScreen = () => {
     setIsRefreshing(false);
   }, [loadInventories, buildFlatAssets]);
 
-  // Opções de filtro derivadas dos dados
   const availableLocals = useMemo(
     () => [...new Set(allAssets.map((a) => a.location).filter(Boolean))].sort(),
     [allAssets]
   );
+
+  // availableTipos retorna objetos { value, label } para exibir rótulos legíveis na UI
   const availableTipos = useMemo(
-    () => [...new Set(allAssets.map((a) => a.status).filter(Boolean))].sort(),
+    () =>
+      [...new Set(allAssets.map((a) => a.status).filter((s): s is AssetStatus => Boolean(s)))]
+        .sort()
+        .map((value) => ({ value, label: STATUS_LABELS[value] ?? value })),
     [allAssets]
   );
 
-  // Lista filtrada (busca + filtros)
   const filteredAssets = useMemo(() => {
     let list = allAssets;
     if (search.trim()) {
@@ -161,7 +172,6 @@ export const HomeScreen = () => {
     return list;
   }, [allAssets, search, filters]);
 
-  // Paginação
   const visibleAssets = useMemo(
     () => filteredAssets.slice(0, page * PAGE_SIZE),
     [filteredAssets, page]
@@ -169,9 +179,10 @@ export const HomeScreen = () => {
 
   const isLoadingMoreRef = useRef(false);
 
+  // CORREÇÃO: handleLoadMore sem requestAnimationFrame, usando pageRef para valor atual e setPage direto.
   const handleLoadMore = useCallback(() => {
     if (isLoadingMoreRef.current || isEndReached) return;
-    const nextPage = page + 1;
+    const nextPage = pageRef.current + 1;
     const nextCount = nextPage * PAGE_SIZE;
     if (nextCount >= filteredAssets.length) {
       setIsEndReached(true);
@@ -181,23 +192,20 @@ export const HomeScreen = () => {
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
 
-    // Use requestAnimationFrame ou apenas setPage diretamente;  o importante é resetar após a renderização.
-    requestAnimationFrame(() => {
-      setPage(nextPage);
-      setIsLoadingMore(false);
-      isLoadingMoreRef.current = false;
-    });
-  }, [page, filteredAssets.length, isLoadingMore, isEndReached]);
+    setPage(nextPage);
+    setIsLoadingMore(false);
+    isLoadingMoreRef.current = false;
+  }, [filteredAssets.length, isEndReached]);
 
+  // Reset de página quando busca ou filtros mudam
   useEffect(() => {
     setPage(1);
     setIsEndReached(filteredAssets.length <= PAGE_SIZE);
-  }, [search, filters, filteredAssets.length]);
+  }, [search, filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ==================== NAVEGAÇÃO ====================
 
-  // Navegação para detalhe do item (InventoryDetail)
-  const handleOpenAsset = useCallback(
+  const handleGoToInventory = useCallback(
     (asset: FlatAsset) => {
       navigation.navigate('InventoryDetail', {
         inventoryId: asset.inventoryId,
@@ -207,36 +215,50 @@ export const HomeScreen = () => {
     [navigation]
   );
 
-  // Navegação para Scanner
   const handleGoToScanner = useCallback(() => {
-    const activeInventory = inventories.find((inv) => inv.items.some((item) => !item.found));
-    if (activeInventory) {
-      navigation.navigate('Scanner', { inventoryId: activeInventory.metadata.id });
-    } else if (inventories.length > 0) {
-      navigation.navigate('Scanner', {
-        inventoryId: inventories[inventories.length - 1].metadata.id,
-      });
-    } else {
-      navigation.navigate('ImportInventory');
+    const activeInventories = inventories.filter((inv) => inv.items.some((item) => !item.found));
+
+    if (activeInventories.length === 0) {
+      if (inventories.length > 0) {
+        navigation.navigate('Scanner', {
+          inventoryId: inventories[inventories.length - 1].metadata.id,
+        });
+      } else {
+        navigation.navigate('ImportInventory');
+      }
+      return;
     }
+
+    if (activeInventories.length === 1) {
+      navigation.navigate('Scanner', { inventoryId: activeInventories[0].metadata.id });
+      return;
+    }
+
+    Alert.alert(
+      'Selecionar inventário',
+      'Há mais de um inventário em andamento. Qual deseja escanear?',
+      [
+        ...activeInventories.map((inv) => ({
+          text: inv.metadata.name,
+          onPress: () => navigation.navigate('Scanner', { inventoryId: inv.metadata.id }),
+        })),
+        { text: 'Cancelar', style: 'cancel' as const },
+      ]
+    );
   }, [inventories, navigation]);
 
-  // Navegação para Importar CSV
   const handleImportCSV = useCallback(() => {
     navigation.navigate('ImportInventory');
   }, [navigation]);
 
-  // Navegação para Cadastro Manual
   const handleManualInventory = useCallback(() => {
     navigation.navigate('ManualInventory');
   }, [navigation]);
 
-  // Navegação para Relatórios
   const handleGoToReports = useCallback(() => {
     navigation.navigate('Reports');
   }, [navigation]);
 
-  // Navegação para Configurações
   const handleGoToSettings = useCallback(() => {
     navigation.navigate('Settings');
   }, [navigation]);
@@ -257,7 +279,6 @@ export const HomeScreen = () => {
 
   const hasActiveFilters = filters.tipo !== '' || filters.local !== '';
 
-  // Loading inicial
   if (isLoading) {
     return (
       <View style={commonStyles.loadingContainer}>
@@ -272,20 +293,28 @@ export const HomeScreen = () => {
     <View style={commonStyles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
-      {/* Header com botões de Relatórios e Configurações */}
+      {/* Header */}
       <View style={homeStyles.header}>
         <View>
           <Text style={homeStyles.headerTitle}>PatriScan</Text>
           <Text style={homeStyles.headerSub}>{allAssets.length} bens patrimoniais</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* Botão de Relatórios */}
-          <TouchableOpacity style={homeStyles.addBtn} onPress={handleGoToReports}>
+          <TouchableOpacity
+            style={homeStyles.addBtn}
+            onPress={handleGoToReports}
+            accessibilityRole="button"
+            accessibilityLabel="Relatórios"
+          >
             <Ionicons name="bar-chart-outline" size={20} color={colors.accent} />
           </TouchableOpacity>
-          {/* Botão de Configurações */}
-          <TouchableOpacity style={homeStyles.addBtn} onPress={handleGoToSettings}>
-            <Ionicons name="settings-outline" size={20} color={colors.accent} />
+          <TouchableOpacity
+            style={homeStyles.addBtn}
+            onPress={handleGoToSettings}
+            accessibilityRole="button"
+            accessibilityLabel="Configurações"
+          >
+            <Ionicons name="settings" size={20} color={colors.accent} />
           </TouchableOpacity>
         </View>
       </View>
@@ -316,6 +345,8 @@ export const HomeScreen = () => {
             setPendingFilters(filters);
             setIsFilterOpen(true);
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Filtros"
         >
           <Ionicons
             name="options-outline"
@@ -331,7 +362,9 @@ export const HomeScreen = () => {
         <View style={homeStyles.activeFiltersRow}>
           {filters.tipo && (
             <View style={homeStyles.chip}>
-              <Text style={homeStyles.chipText}>Tipo: {filters.tipo}</Text>
+              <Text style={homeStyles.chipText}>
+                Tipo: {STATUS_LABELS[filters.tipo as AssetStatus] ?? filters.tipo}
+              </Text>
             </View>
           )}
           {filters.local && (
@@ -345,40 +378,45 @@ export const HomeScreen = () => {
         </View>
       )}
 
-      {/* Botões de ação - Três opções */}
+      {/* Botões de ação */}
       <View style={homeStyles.actionRow}>
         <TouchableOpacity
           style={[homeStyles.actionBtn, homeStyles.actionBtnPrimary]}
           onPress={handleGoToScanner}
           disabled={inventories.length === 0}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Escanear inventário"
         >
-          <Ionicons name="barcode-outline" size={18} color="#000" style={{ marginRight: 4 }} />
+          <View style={homeStyles.actionBtnIconContainer}>
+            <Ionicons name="barcode-outline" size={22} color="#000" />
+          </View>
           <Text style={homeStyles.actionBtnText}>Escanear</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[homeStyles.actionBtn, homeStyles.actionBtnSecondary]}
           onPress={handleImportCSV}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Importar arquivo CSV"
         >
-          <Ionicons
-            name="document-attach-outline"
-            size={18}
-            color={colors.accent}
-            style={{ marginRight: 4 }}
-          />
+          <View style={homeStyles.actionBtnIconContainer}>
+            <Ionicons name="document-attach-outline" size={22} color={colors.accent} />
+          </View>
           <Text style={[homeStyles.actionBtnText, { color: colors.accent }]}>Importar CSV</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[homeStyles.actionBtn, homeStyles.actionBtnSecondary]}
           onPress={handleManualInventory}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Cadastrar manualmente"
         >
-          <Ionicons
-            name="create-outline"
-            size={18}
-            color={colors.accent}
-            style={{ marginRight: 4 }}
-          />
+          <View style={homeStyles.actionBtnIconContainer}>
+            <Ionicons name="create-outline" size={22} color={colors.accent} />
+          </View>
           <Text style={[homeStyles.actionBtnText, { color: colors.accent }]}>Cadastrar</Text>
         </TouchableOpacity>
       </View>
@@ -396,8 +434,10 @@ export const HomeScreen = () => {
       {/* Lista paginada */}
       <FlatList
         data={visibleAssets}
-        keyExtractor={(item, index) => `${item.code}-${item.inventoryId}-${index}`}
-        renderItem={({ item }) => <AssetRow asset={item} onPress={() => handleOpenAsset(item)} />}
+        keyExtractor={(item) => `${item.inventoryId}-${item.code}`}
+        renderItem={({ item }) => (
+          <AssetRow asset={item} onPress={() => handleGoToInventory(item)} />
+        )}
         contentContainerStyle={[
           homeStyles.listContent,
           visibleAssets.length === 0 && homeStyles.listContentEmpty,
@@ -468,6 +508,10 @@ const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
     style={[homeStyles.itemRow, asset.isScanned && homeStyles.itemRowScanned]}
     onPress={onPress}
     activeOpacity={0.7}
+    accessibilityRole="button"
+    accessibilityLabel={`${asset.code} ${asset.description || ''}, ${
+      asset.isScanned ? 'escaneado' : 'pendente'
+    }`}
   >
     <View style={[homeStyles.itemIndicator, asset.isScanned && homeStyles.itemIndicatorScanned]} />
     <View style={homeStyles.itemBody}>
@@ -510,7 +554,7 @@ const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
 interface FilterModalProps {
   visible: boolean;
   filters: ActiveFilters;
-  availableTipos: string[];
+  availableTipos: { value: string; label: string }[];
   availableLocals: string[];
   onChange: (f: ActiveFilters) => void;
   onApply: () => void;
@@ -530,7 +574,13 @@ const FilterModal = React.memo(
     onClose,
   }: FilterModalProps) => (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={homeStyles.modalOverlay} activeOpacity={1} onPress={onClose} />
+      {/* CORREÇÃO: overlay sem flex extra, usando estilo absoluto definido em homeStyles.modalOverlay */}
+      <TouchableOpacity
+        style={homeStyles.modalOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+        accessibilityLabel="Fechar filtros"
+      />
       <View style={homeStyles.modalSheet}>
         <View style={homeStyles.modalHandle} />
         <Text style={homeStyles.modalTitle}>Filtros</Text>
@@ -538,22 +588,43 @@ const FilterModal = React.memo(
         <ScrollView showsVerticalScrollIndicator={false}>
           <Text style={homeStyles.filterGroupLabel}>Tipo / Status</Text>
           <View style={homeStyles.filterOptions}>
-            {['', ...availableTipos].map((val) => (
+            <TouchableOpacity
+              key="__all_tipo"
+              style={[
+                homeStyles.filterOption,
+                filters.tipo === '' && homeStyles.filterOptionActive,
+              ]}
+              onPress={() => onChange({ ...filters, tipo: '' })}
+              accessibilityRole="button"
+              accessibilityLabel="Todos os tipos"
+            >
+              <Text
+                style={[
+                  homeStyles.filterOptionText,
+                  filters.tipo === '' && homeStyles.filterOptionTextActive,
+                ]}
+              >
+                Todos
+              </Text>
+            </TouchableOpacity>
+            {availableTipos.map(({ value, label }) => (
               <TouchableOpacity
-                key={val || '__all_tipo'}
+                key={value}
                 style={[
                   homeStyles.filterOption,
-                  filters.tipo === val && homeStyles.filterOptionActive,
+                  filters.tipo === value && homeStyles.filterOptionActive,
                 ]}
-                onPress={() => onChange({ ...filters, tipo: val })}
+                onPress={() => onChange({ ...filters, tipo: value })}
+                accessibilityRole="button"
+                accessibilityLabel={label}
               >
                 <Text
                   style={[
                     homeStyles.filterOptionText,
-                    filters.tipo === val && homeStyles.filterOptionTextActive,
+                    filters.tipo === value && homeStyles.filterOptionTextActive,
                   ]}
                 >
-                  {val || 'Todos'}
+                  {label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -569,6 +640,8 @@ const FilterModal = React.memo(
                   filters.local === val && homeStyles.filterOptionActive,
                 ]}
                 onPress={() => onChange({ ...filters, local: val })}
+                accessibilityRole="button"
+                accessibilityLabel={val || 'Todos os locais'}
               >
                 <Text
                   style={[
