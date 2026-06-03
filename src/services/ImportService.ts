@@ -1,5 +1,7 @@
+import { Buffer } from 'buffer';
 import * as DocumentPicker from 'expo-document-picker';
-import { File } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system';
+import * as iconv from 'iconv-lite';
 import Papa from 'papaparse';
 import {
   AssetItem,
@@ -8,15 +10,15 @@ import {
   ColumnMapping,
   CSVValidationResult,
   Inventory,
+  isStandardField,
   MappableField,
   Result,
-  isStandardField,
 } from '../types/types';
+import { parseBrazilianCurrencySafe } from '../utils/currencyUtils';
 import { toISODate } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
-import { StorageService } from './StorageService';
 import { generateBasicSchema } from '../utils/schemaUtils';
-import { parseBrazilianCurrencySafe } from '../utils/currencyUtils';
+import { StorageService } from './StorageService';
 
 export class ImportService {
   /**
@@ -44,19 +46,40 @@ export class ImportService {
   > {
     return handleServiceError(
       async () => {
-        const csvFile = new File(uri);
-        const csvContent = await csvFile.text();
+        // 1. Lê o conteúdo como Base64 (bytes crus)
+        const base64Content = await FileSystem.readAsStringAsync(uri, {
+          encoding: 'base64', // ✅ String literal, sem EncodingType
+        });
 
+        // 2. Converte Base64 para Buffer
+        const buffer = Buffer.from(base64Content, 'base64');
+
+        // 3. Tenta decodificar como Windows-1252 (padrão Excel PT-BR)
+        let textContent = iconv.decode(buffer, 'win1252');
+
+        // 4. Heurística: se detectar caracteres típicos de UTF-8 mal interpretado,
+        //    reverte para decodificação UTF-8
+        if (
+          textContent.includes('Ã£') ||
+          textContent.includes('Ã§') ||
+          textContent.includes('Ã³') ||
+          textContent.includes('Ã©') ||
+          textContent.includes('Ã¡')
+        ) {
+          textContent = iconv.decode(buffer, 'utf8');
+        }
+
+        // 5. Parse com PapaParse
         return new Promise((resolve, reject) => {
-          Papa.parse(csvContent, {
+          Papa.parse(textContent, {
             header: true,
             skipEmptyLines: true,
-            encoding: 'UTF-8',
+            encoding: 'UTF-8', // string já decodificada
             complete: (results) => {
               resolve({
                 headers: results.meta.fields || [],
                 data: results.data as Record<string, string>[],
-                raw: csvContent,
+                raw: textContent,
               });
             },
             error: (error: { message: string }) => {
