@@ -1,7 +1,5 @@
-import { Buffer } from 'buffer';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import * as iconv from 'iconv-lite';
 import Papa from 'papaparse';
 import {
   AssetItem,
@@ -48,14 +46,24 @@ export class ImportService {
       async () => {
         // 1. Lê o conteúdo como Base64 (bytes crus)
         const base64Content = await FileSystem.readAsStringAsync(uri, {
-          encoding: 'base64', // ✅ String literal, sem EncodingType
+          encoding: 'base64',
         });
 
-        // 2. Converte Base64 para Buffer
-        const buffer = Buffer.from(base64Content, 'base64');
+        // 2. Converte Base64 para Uint8Array (compatível com TextDecoder)
+        const binaryString = atob(base64Content);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
 
         // 3. Tenta decodificar como Windows-1252 (padrão Excel PT-BR)
-        let textContent = iconv.decode(buffer, 'win1252');
+        let textContent: string;
+        try {
+          textContent = new TextDecoder('windows-1252').decode(bytes);
+        } catch {
+          // Fallback para latin1 se windows-1252 não estiver disponível
+          textContent = new TextDecoder('latin1').decode(bytes);
+        }
 
         // 4. Heurística: se detectar caracteres típicos de UTF-8 mal interpretado,
         //    reverte para decodificação UTF-8
@@ -66,7 +74,7 @@ export class ImportService {
           textContent.includes('Ã©') ||
           textContent.includes('Ã¡')
         ) {
-          textContent = iconv.decode(buffer, 'utf8');
+          textContent = new TextDecoder('utf-8').decode(bytes);
         }
 
         // 5. Parse com PapaParse
@@ -74,7 +82,7 @@ export class ImportService {
           Papa.parse(textContent, {
             header: true,
             skipEmptyLines: true,
-            encoding: 'UTF-8', // string já decodificada
+            encoding: 'UTF-8',
             complete: (results) => {
               resolve({
                 headers: results.meta.fields || [],
@@ -198,7 +206,6 @@ export class ImportService {
         seenCodes.add(codeVal);
       }
 
-      // Descrição agora é opcional: apenas avisa, não invalida a linha
       if (colDesc) {
         const descVal = row[colDesc]?.toString().trim();
         if (!descVal) {
@@ -207,7 +214,6 @@ export class ImportService {
             field: colDesc,
             message: 'Descrição não informada',
           });
-          // isRowValid não é alterado
         }
       }
 
@@ -263,7 +269,7 @@ export class ImportService {
     };
 
     const normalized = status.toLowerCase().trim();
-    return statusMap[normalized] || 'good'; //  default para 'good'
+    return statusMap[normalized] || 'good';
   }
 
   /**
@@ -279,10 +285,10 @@ export class ImportService {
         description: '',
         department: '',
         location: '',
-        status: 'good', //  Status padrão válido
+        status: 'good',
         value: undefined,
         importDate: undefined,
-        customFields: {}, // Inicializa vazio
+        customFields: {},
       };
 
       for (const [csvCol, assetField] of Object.entries(mapping)) {
@@ -300,12 +306,10 @@ export class ImportService {
                 base.status = this.normalizeStatus(strValue);
                 break;
               default:
-                // code, description, department, location
                 base[assetField] = strValue;
                 break;
             }
           } else {
-            // Campo customizado
             if (base.customFields) {
               base.customFields[assetField] = strValue;
             }
@@ -325,18 +329,17 @@ export class ImportService {
     items: AssetItem[]
   ): Promise<Result<Inventory>> {
     return handleServiceError(async () => {
-      //  Gera o schema a partir dos itens
       const schema = generateBasicSchema(items);
       const inventory: Inventory = {
         metadata: {
-          id: StorageService.generateInventoryId(), // Usar o gerador de ID
+          id: StorageService.generateInventoryId(),
           name,
           importDate: toISODate(new Date()),
           totalItems: items.length,
           status: 'active',
         },
         items,
-        schema, //  Inclui o schema obrigatório
+        schema,
       };
 
       const saveResult = await StorageService.saveInventory(inventory);
