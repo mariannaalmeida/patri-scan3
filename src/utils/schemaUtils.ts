@@ -1,6 +1,9 @@
-import { AssetItem, InventorySchema, FieldDefinition } from '../types/types';
+import { AssetItem, FieldDefinition, InventorySchema } from '../types/types';
 
-export function generateBasicSchema(items: AssetItem[]): InventorySchema {
+export function generateBasicSchema(
+  items: AssetItem[],
+  extraCustomFields?: string[]
+): InventorySchema {
   const fixedFields: FieldDefinition[] = [
     { name: 'code', label: 'Código', type: 'text', required: true, fixed: true },
     { name: 'description', label: 'Descrição', type: 'text', required: false, fixed: true },
@@ -18,11 +21,18 @@ export function generateBasicSchema(items: AssetItem[]): InventorySchema {
   ];
 
   const customKeys = new Set<string>();
+
+  // Coleta das customFields dos itens
   items.forEach((item) => {
     if (item.customFields) {
       Object.keys(item.customFields).forEach((key) => customKeys.add(key));
     }
   });
+
+  // Adiciona campos extras fornecidos explicitamente
+  if (extraCustomFields) {
+    extraCustomFields.forEach((field) => customKeys.add(field));
+  }
 
   const customFields: FieldDefinition[] = Array.from(customKeys).map((key) => ({
     name: key,

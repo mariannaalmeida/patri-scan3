@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,19 +14,13 @@ import {
 } from 'react-native';
 import { ImportService } from '../services/ImportService';
 import { colors, createInventoryStyles } from '../styles/theme';
-import {
-  ColumnMapping,
-  MappableField,
-  RootStackParamList,
-  CSVValidationResult,
-} from '../types/types';
-import { Ionicons } from '@expo/vector-icons';
+import { ColumnMapping, MappableField, RootStackParamList } from '../types/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type Step = 'initial' | 'mapping' | 'validation' | 'processing';
 
-// Constante com os campos disponíveis para mapeamento
+// Campos disponíveis para mapeamento
 const MAPPABLE_FIELDS: MappableField[] = [
   'code',
   'description',
@@ -35,17 +30,7 @@ const MAPPABLE_FIELDS: MappableField[] = [
   'value',
 ];
 
-/* 
-const FIELD_LABELS: Record<MappableField, string> = {
-  code: 'Código',
-  description: 'Descrição',
-  department: 'Departamento',
-  location: 'Localização',
-  status: 'Status',
-  value: 'Valor',
-}; */
-
-// Alterado para Record<string, string> para suportar os campos extras sem erro do TS
+// Rótulos dos campos (inclui suporte a campos extras via fallback)
 const FIELD_LABELS: Record<string, string> = {
   code: 'Código',
   description: 'Descrição',
@@ -54,6 +39,9 @@ const FIELD_LABELS: Record<string, string> = {
   status: 'Status',
   value: 'Valor',
 };
+
+// Helper para obter rótulo seguro, com fallback para o nome original do campo
+const getFieldLabel = (field: string): string => FIELD_LABELS[field] ?? field;
 
 export const ImportInventoryScreen = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -66,7 +54,7 @@ export const ImportInventoryScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  //  Prólogo da validação (preview)
+  // Pré-visualização da validação
   const validationPreview = useMemo(() => {
     if (currentStep !== 'validation' || csvData.length === 0) return null;
     return ImportService.validateCSVData(csvData, finalMapping);
@@ -74,8 +62,7 @@ export const ImportInventoryScreen = () => {
 
   const styles = createInventoryStyles;
 
-  // Resetar o estado do formulário
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setCurrentStep('initial');
     setInventoryName('');
     setCsvData([]);
@@ -83,12 +70,10 @@ export const ImportInventoryScreen = () => {
     setColumnMapping([]);
     setFinalMapping({});
     setProgress(0);
-  };
+  }, []);
 
-  //  Voltar para a Home
   const handleGoBack = () => {
     if (currentStep !== 'initial') {
-      // Se não estiver na etapa inicial, pergunta se quer cancelar
       Alert.alert('Cancelar importação', 'Deseja cancelar a importação e voltar?', [
         { text: 'Continuar importação', style: 'cancel' },
         {
@@ -122,7 +107,6 @@ export const ImportInventoryScreen = () => {
         return;
       }
 
-      //  Verificação mais clara de cancelamento
       if (!fileResult.value || !fileResult.value.assets || fileResult.value.assets.length === 0) {
         return; // Usuário cancelou a seleção
       }
@@ -159,7 +143,6 @@ export const ImportInventoryScreen = () => {
       }
     });
 
-    // Verificação mais específica para o campo code
     const hasCodeMapping = Object.values(mapping).some((field) => field === 'code');
 
     if (!hasCodeMapping) {
@@ -171,36 +154,34 @@ export const ImportInventoryScreen = () => {
     setCurrentStep('validation');
   };
 
-  // Etapa 3: Validar e processar
+  // Etapa 3: Validar e processar - fluxo unificado com finally
   const handleProcessInventory = async () => {
     setIsLoading(true);
     setProgress(10);
 
     try {
-      const validation = ImportService.validateCSVData(csvData, finalMapping);
+      // Reutiliza validação pré-calculada
+      const validation = validationPreview ?? ImportService.validateCSVData(csvData, finalMapping);
       setProgress(40);
 
       if (validation.errorRows > 0) {
-        Alert.alert(
-          'Erros encontrados',
-          `${validation.errorRows} linhas contêm erros. Deseja continuar mesmo assim?`,
-          [
-            { text: 'Cancelar', style: 'cancel', onPress: () => setIsLoading(false) },
-            { text: 'Continuar', onPress: () => processInventory(validation) },
-          ]
-        );
-      } else {
-        await processInventory(validation);
+        // Aguarda decisão do usuário; rejeita com 'CANCELLED' se cancelar
+        await new Promise<void>((resolve, reject) => {
+          Alert.alert(
+            'Erros encontrados',
+            `${validation.errorRows} linhas contêm erros. Deseja continuar mesmo assim?`,
+            [
+              {
+                text: 'Cancelar',
+                style: 'cancel',
+                onPress: () => reject(new Error('CANCELLED')),
+              },
+              { text: 'Continuar', onPress: () => resolve() },
+            ]
+          );
+        });
       }
-    } catch (error) {
-      Alert.alert('Erro', 'Falha ao processar inventário');
-      setIsLoading(false);
-      setProgress(0);
-    }
-  };
 
-  const processInventory = async (validation: CSVValidationResult) => {
-    try {
       setProgress(60);
       const items = ImportService.convertToAssetItems(csvData, finalMapping);
       setProgress(80);
@@ -235,7 +216,10 @@ export const ImportInventoryScreen = () => {
         throw new Error(inventoryResult.error.message);
       }
     } catch (error) {
-      Alert.alert('Erro', error instanceof Error ? error.message : 'Falha ao criar inventário');
+      if (error instanceof Error && error.message !== 'CANCELLED') {
+        Alert.alert('Erro', error.message || 'Falha ao processar inventário');
+      }
+    } finally {
       setIsLoading(false);
       setProgress(0);
     }
@@ -256,7 +240,6 @@ export const ImportInventoryScreen = () => {
           <View key={`${item.csvHeader}-${index}`} style={styles.mappingItem}>
             <Text style={styles.csvHeader}>{item.csvHeader}</Text>
 
-            {/* Scroll horizontal dos botões */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -267,11 +250,7 @@ export const ImportInventoryScreen = () => {
                 style={[styles.fieldButton, !item.mappedField && styles.fieldButtonActive]}
                 onPress={() => {
                   const newMapping = [...columnMapping];
-
-                  newMapping[index] = {
-                    ...newMapping[index],
-                    mappedField: undefined,
-                  };
+                  newMapping[index] = { ...newMapping[index], mappedField: undefined };
                   setColumnMapping(newMapping);
                 }}
               >
@@ -295,12 +274,7 @@ export const ImportInventoryScreen = () => {
                   ]}
                   onPress={() => {
                     const newMapping = [...columnMapping];
-
-                    newMapping[index] = {
-                      ...newMapping[index],
-                      mappedField: field,
-                    };
-
+                    newMapping[index] = { ...newMapping[index], mappedField: field };
                     setColumnMapping(newMapping);
                   }}
                 >
@@ -323,10 +297,9 @@ export const ImportInventoryScreen = () => {
                 ]}
                 onPress={() => {
                   const newMapping = [...columnMapping];
-
                   newMapping[index] = {
                     ...newMapping[index],
-                    mappedField: item.csvHeader,
+                    mappedField: item.csvHeader, // Agora seguro com MappableField atualizado
                   };
                   setColumnMapping(newMapping);
                 }}
@@ -342,7 +315,6 @@ export const ImportInventoryScreen = () => {
               </TouchableOpacity>
             </ScrollView>
 
-            {/* Confiança */}
             {item.confidence > 0 && item.confidence < 100 && (
               <Text style={styles.confidenceText}>Confiança: {item.confidence}%</Text>
             )}
@@ -410,11 +382,11 @@ export const ImportInventoryScreen = () => {
         <Text style={styles.previewTitle}>Preview dos dados:</Text>
         <ScrollView style={styles.previewList} showsVerticalScrollIndicator={false}>
           {csvData.slice(0, 5).map((row, index) => (
-            <View key={index} style={styles.previewItem}>
+            <View key={`preview-${index}-${row.code ?? index}`} style={styles.previewItem}>
               {Object.entries(finalMapping).map(([csvHeader, field]) => (
                 <Text key={field} style={styles.previewText}>
                   <Text style={{ fontWeight: 'bold', color: colors.accent }}>
-                    {FIELD_LABELS[field]}:
+                    {getFieldLabel(field)}:
                   </Text>{' '}
                   {row[csvHeader] || '—'}
                 </Text>
@@ -435,19 +407,15 @@ export const ImportInventoryScreen = () => {
           )}
         </TouchableOpacity>
 
-        {progress > 0 && (
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${progress}%` }]} />
-          </View>
-        )}
+        {/* Barra de progresso secundária removida para evitar duplicação */}
       </View>
     );
   };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
-      {/* Header com botão de voltar */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />

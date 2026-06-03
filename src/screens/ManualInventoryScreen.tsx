@@ -6,6 +6,7 @@
  * Suporte completo a campos dinâmicos (EAV / Dynamic Schema)
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
@@ -21,16 +22,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { StorageService } from '../services/StorageService';
-import { colors, manualInventoryStyles, localStyles } from '../styles/theme';
-import { AssetItem, AssetStatus, RootStackParamList, Inventory } from '../types/types';
-import { toISODate } from '../utils/dateUtils';
+import { colors, localStyles, manualInventoryStyles } from '../styles/theme';
+import { AssetItem, AssetStatus, Inventory, RootStackParamList } from '../types/types';
 import { parseBrazilianCurrencySafe } from '../utils/currencyUtils';
+import { toISODate } from '../utils/dateUtils';
 import { generateBasicSchema } from '../utils/schemaUtils';
-
-
-
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -223,7 +220,14 @@ export const ManualInventoryScreen = () => {
       }));
 
       const id = StorageService.generateInventoryId();
-      const schema = generateBasicSchema(assetItems); // gera schema a partir dos itens
+
+      // CORREÇÃO: Gera o schema incluindo os campos extras definidos pelo usuário,
+      // mesmo que nenhum item tenha sido preenchido. Isso garante que o schema
+      // reflita a estrutura desejada para consultas futuras.
+      const schema = generateBasicSchema(
+        assetItems,
+        schemaFields.map((f) => f.name)
+      );
 
       const inventory: Inventory = {
         items: assetItems,
@@ -477,4 +481,3 @@ export const ManualInventoryScreen = () => {
     </KeyboardAvoidingView>
   );
 };
-
