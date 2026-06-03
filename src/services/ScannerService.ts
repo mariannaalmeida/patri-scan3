@@ -15,40 +15,41 @@ export class ScannerService {
    * Retorna o status do scan: encontrado, já escaneado (found=true) ou não encontrado.
    */
   static findItemByCode(code: string, inventory: Inventory): ScanMatch {
-    const trimmedCode = code.trim();
-    const item = inventory.items.find((i) => i.code === trimmedCode);
+    const normalizedScannedCode = String(code).trim().toLowerCase();
+
+    const item = inventory.items.find(
+      (i) => String(i.code).trim().toLowerCase() === normalizedScannedCode
+    );
 
     if (!item) {
-      return { status: 'not_found', code: trimmedCode };
+      return { status: 'not_found', code: String(code).trim() };
     }
 
     // Verifica se o item já foi escaneado (found === true)
     if (item.found) {
-      return { status: 'already_scanned', item, code: trimmedCode };
+      return { status: 'already_scanned', item, code: item.code };
     }
 
-    return { status: 'found', item, code: trimmedCode };
+    return { status: 'found', item, code: item.code };
   }
 
   /**
    * Confirma o scan de um item: marca como encontrado e persiste.
    * Retorna o inventário atualizado e o ScanResult.
    */
+  // ScannerService.ts
   static async confirmScan(
-    inventoryName: string,
+    inventoryId: string, // Renomeado de "inventoryName" para "inventoryId"
     item: AssetItem,
     scanDate?: Date | string
   ): Promise<Result<{ updatedInventory: Inventory; result: ScanResult }>> {
     return handleServiceError(async () => {
-      // Se o item já está encontrado, não precisa atualizar
       if (item.found) {
-        // Recarrega o inventário para garantir que temos os dados mais recentes
-        const loadResult = await StorageService.loadInventory(inventoryName);
+        const loadResult = await StorageService.loadInventory(inventoryId);
         if (!loadResult.ok) {
           throw new Error(loadResult.error.message);
         }
         const updatedInventory = loadResult.value;
-        // Localiza o item atualizado (deve estar com found=true)
         const updatedItem = updatedInventory.items.find((i) => i.code === item.code);
         if (!updatedItem) {
           throw new Error('Item não encontrado após recarregar inventário');
@@ -63,9 +64,8 @@ export class ScannerService {
         return { updatedInventory, result };
       }
 
-      // Atualiza o status do item via StorageService
       const updateResult = await StorageService.updateItemFoundStatus(
-        inventoryName,
+        inventoryId, // Correto: passa o ID
         item.code,
         true,
         scanDate
@@ -74,8 +74,7 @@ export class ScannerService {
         throw new Error(updateResult.error.message);
       }
 
-      // Recarrega o inventário atualizado
-      const loadResult = await StorageService.loadInventory(inventoryName);
+      const loadResult = await StorageService.loadInventory(inventoryId);
       if (!loadResult.ok) {
         throw new Error(loadResult.error.message);
       }

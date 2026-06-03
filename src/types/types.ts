@@ -8,13 +8,7 @@ export type AssetCode = string;
 
 // Mantém autocomplete para os fixos e permite strings customizadas
 
-export type KnownFields =
-  | 'code'
-  | 'description'
-  | 'department'
-  | 'location'
-  | 'status'
-  | 'value';
+export type KnownFields = 'code' | 'description' | 'department' | 'location' | 'status' | 'value';
 
 export type MappableField = KnownFields | (string & {});
 
@@ -43,7 +37,6 @@ export interface AssetItemBase {
 export type AssetItem =
   | (AssetItemBase & { found: true; scanDate: ISODateString })
   | (AssetItemBase & { found: false; scanDate?: never });
-
 
 export interface InventoryMetadata {
   id: InventoryId;
@@ -183,39 +176,28 @@ export type ISODateString = string;
 export type RootStackParamList = {
   // Tela inicial
   Home: undefined;
-
   // Detalhe do inventário
   InventoryDetail: {
     inventoryId: string;
     inventoryName: string;
   };
-
   // Scanner
   Scanner: {
     inventoryId: string;
   };
-
   // Relatórios
   Reports: undefined;
+  
   ReportDetail: {
     inventoryId: string;
     inventoryName?: string;
   };
-
   // Criação/Importação
   ImportInventory: undefined; // Importar CSV
   ManualInventory: undefined; // Cadastro manual
-
-  InventoryList: undefined;
-
   // Configurações
   Settings: undefined;
-  About: undefined;
 };
-
-
-
-
 
 // --- Export ---
 export type ExportFormat = 'csv_found' | 'csv_pending' | 'csv_full' | 'pdf' | 'xlsx' | 'json';
@@ -243,7 +225,6 @@ export type AppErrorCode =
   | 'STORAGE_DELETE_FAILED'
   | 'STORAGE_NOT_FOUND'
 
-  
   // Importação
   | 'IMPORT_INVALID_FILE'
   | 'IMPORT_PARSE_FAILED'

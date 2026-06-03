@@ -178,7 +178,18 @@ export const ScannerScreen = () => {
   const handleConfirm = useCallback(async () => {
     if (!pendingItem || !inventory) return;
 
+    // No ScannerScreen, antes de chamar confirmScan:
+console.log('Confirmando scan:', {
+    inventoryId: inventory.metadata.id,
+    inventoryName: inventory.metadata.name,
+    itemCode: pendingItem.code
+});
+
+
+
     const result = await ScannerService.confirmScan(inventory.metadata.id, pendingItem);
+    console.log('Resultado do confirmScan:', result);
+
 
     setIsConfirmVisible(false);
     setPendingItem(null);
