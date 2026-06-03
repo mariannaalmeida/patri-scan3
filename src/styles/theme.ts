@@ -19,7 +19,7 @@ export const colors = {
   bg: '#0A0A0F',
   surface: '#14141C',
   surface2: '#1E1E2A',
-
+  trasparent: '#0000000d',
   // Texto
   text: '#F0F0F8',
   textDim: '#6B6B88',
@@ -1101,7 +1101,7 @@ export const inventoryDetailStyles = StyleSheet.create({
     color: colors.text,
   },
 });
-
+// estilo da tela de Home
 export const homeStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -1232,20 +1232,23 @@ export const homeStyles = StyleSheet.create({
   },
   actionBtn: {
     flex: 1,
-    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 13,
     borderRadius: 12,
+    minHeight: 70,
   },
   actionBtnPrimary: {
     backgroundColor: colors.accent,
   },
   actionBtnSecondary: {
     backgroundColor: colors.surface2,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.accent + '44',
+  },
+  actionBtnIconContainer: {
+    marginBottom: 4,
   },
   actionBtnIcon: {
     fontSize: 15,
