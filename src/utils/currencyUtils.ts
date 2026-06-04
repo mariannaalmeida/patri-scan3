@@ -6,10 +6,10 @@
  * @returns O número correspondente, ou NaN se a string for inválida.
  */
 export function parseBrazilianCurrency(value: string): number {
-  if (!value) return NaN;
+  if (!value || !value.trim()) return NaN;
 
   // Remove pontos de milhar, substitui vírgula decimal por ponto
-  const sanitized = value.replace(/\./g, '').replace(',', '.');
+  const sanitized = value.trim().replace(/\./g, '').replace(',', '.');
   return parseFloat(sanitized);
 }
 
