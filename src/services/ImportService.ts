@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import Papa from 'papaparse';
 import {
   AssetItem,
@@ -18,22 +18,99 @@ import { handleServiceError } from '../utils/errorUtils';
 import { generateBasicSchema } from '../utils/schemaUtils';
 import { StorageService } from './StorageService';
 
-export class ImportService {
-  /**
-   *  Selecionar o arquivo CSV do dispositivo
-   */
-  static async pickCSVFile(): Promise<Result<DocumentPicker.DocumentPickerResult | null>> {
-    return handleServiceError(async () => {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'],
-        copyToCacheDirectory: true,
-      });
-      return result.canceled ? null : result;
-    }, 'IMPORT_INVALID_FILE');
+// Mapa de caracteres exclusivos do Windows-1252 (faixa 0x80 a 0x9F)
+const WIN1252_EXTENSIONS = [
+  '\u20AC',
+  '\u0081',
+  '\u201A',
+  '\u0192',
+  '\u201E',
+  '\u2026',
+  '\u2020',
+  '\u2021',
+  '\u02C6',
+  '\u2030',
+  '\u0160',
+  '\u2039',
+  '\u0152',
+  '\u008D',
+  '\u017D',
+  '\u008F',
+  '\u0090',
+  '\u2018',
+  '\u2019',
+  '\u201C',
+  '\u201D',
+  '\u2022',
+  '\u2013',
+  '\u2014',
+  '\u02DC',
+  '\u2122',
+  '\u0161',
+  '\u203A',
+  '\u0153',
+  '\u009D',
+  '\u017E',
+  '\u0178',
+];
+
+/**
+ * Decodifica Uint8Array  para string usando as regras do Windows-1252.
+ * Decodifica bytes Windows-1252
+ */
+function decodeWindows1252(bytes: Uint8Array): string {
+  const chars = new Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = bytes[i];
+    if (byte >= 0x80 && byte <= 0x9f) {
+      chars[i] = WIN1252_EXTENSIONS[byte - 0x80];
+    } else {
+      chars[i] = String.fromCharCode(byte);
+    }
+  }
+  return chars.join('');
+}
+
+/**
+ * Detecta automaticamente UTF-8 ou Windows-1252
+ */
+function decodeCSV(arrayBuffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(arrayBuffer);
+
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xef &&
+    bytes[1] === 0xbb &&
+    bytes[2] === 0xbf
+  ) {
+    return new TextDecoder('utf-8').decode(bytes);
   }
 
+  try {
+    return new TextDecoder('utf-8', {
+      fatal: true,
+    }).decode(bytes);
+  } catch {
+    try {
+      return new TextDecoder('windows-1252').decode(bytes);
+    } catch {
+      return decodeWindows1252(bytes);
+    }
+  }
+}
+/**
+ * Detecta o delimitador do CSV baseado na contagem de caracteres
+ */
+function detectDelimiter(content: string): string {
+  const semicolons = (content.match(/;/g) || []).length;
+  const commas = (content.match(/,/g) || []).length;
+
+  return semicolons > commas ? ';' : ',';
+}
+
+export class ImportService {
   /**
-   *  Ler e parsear o conteúdo do CSV
+   * Parsear o conteúdo do CSV a partir da URI do arquivo
    */
   static async parseCSVFile(uri: string): Promise<
     Result<{
@@ -44,45 +121,24 @@ export class ImportService {
   > {
     return handleServiceError(
       async () => {
-        // 1. Lê o conteúdo como Base64 (bytes crus)
-        const base64Content = await FileSystem.readAsStringAsync(uri, {
-          encoding: 'base64',
-        });
+        // 1. Instancia o arquivo usando a nova API
+        const file = new File(uri);
 
-        // 2. Converte Base64 para Uint8Array (compatível com TextDecoder)
-        const binaryString = atob(base64Content);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
+        // 2. Lê diretamente como ArrayBuffer (padrão Web implementado pelo Expo)
+        // Código com TextDecoder (recomendado)
+        const arrayBuffer = await file.arrayBuffer();
+        const textContent = decodeCSV(arrayBuffer);
 
-        // 3. Tenta decodificar como Windows-1252 (padrão Excel PT-BR)
-        let textContent: string;
-        try {
-          textContent = new TextDecoder('windows-1252').decode(bytes);
-        } catch {
-          // Fallback para latin1 se windows-1252 não estiver disponível
-          textContent = new TextDecoder('latin1').decode(bytes);
-        }
+        // 3. Detecta o delimitador
+        const delimiter = detectDelimiter(textContent);
 
-        // 4. Heurística: se detectar caracteres típicos de UTF-8 mal interpretado,
-        //    reverte para decodificação UTF-8
-        if (
-          textContent.includes('Ã£') ||
-          textContent.includes('Ã§') ||
-          textContent.includes('Ã³') ||
-          textContent.includes('Ã©') ||
-          textContent.includes('Ã¡')
-        ) {
-          textContent = new TextDecoder('utf-8').decode(bytes);
-        }
-
-        // 5. Parse com PapaParse
+        // 6. Parse com PapaParse
         return new Promise((resolve, reject) => {
           Papa.parse(textContent, {
             header: true,
+            delimiter,
             skipEmptyLines: true,
-            encoding: 'UTF-8',
+            transformHeader: (header: string) => header.trim(),
             complete: (results) => {
               resolve({
                 headers: results.meta.fields || [],
@@ -90,7 +146,7 @@ export class ImportService {
                 raw: textContent,
               });
             },
-            error: (error: { message: string }) => {
+            error: (error: Error) => {
               reject(new Error(`Erro ao parsear CSV: ${error.message}`));
             },
           });
@@ -102,7 +158,21 @@ export class ImportService {
   }
 
   /**
-   *  Sugerir mapeamento de colunas baseado em heurística
+   * Selecionar arquivo CSV do dispositivo
+   */
+  static async pickCSVFile(): Promise<Result<DocumentPicker.DocumentPickerResult | null>> {
+    return handleServiceError(async () => {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'],
+        copyToCacheDirectory: true,
+      });
+
+      return result.canceled ? null : result;
+    }, 'IMPORT_INVALID_FILE');
+  }
+
+  /**
+   * Sugerir mapeamento de colunas baseado em heurística
    */
   static suggestColumnMapping(headers: string[]): ColumnMapping[] {
     const fieldKeywords: Partial<Record<MappableField, string[]>> = {
@@ -152,7 +222,7 @@ export class ImportService {
   }
 
   /**
-   *  Validar os dados do CSV contra o mapeamento fornecido
+   * Validar os dados do CSV contra o mapeamento fornecido
    */
   static validateCSVData(
     data: Record<string, string>[],
@@ -273,13 +343,13 @@ export class ImportService {
   }
 
   /**
-   *  Converter dados do CSV para AssetItem (com found: false inicialmente)
+   * Converter dados do CSV para AssetItem (com found: false inicialmente)
    */
   static convertToAssetItems(
     data: Record<string, string>[],
     mapping: Record<string, MappableField>
   ): AssetItem[] {
-    return data.map((row, index) => {
+    return data.map((row) => {
       const base: AssetItemBase = {
         code: '',
         description: '',
@@ -299,14 +369,16 @@ export class ImportService {
             switch (assetField) {
               case 'value': {
                 const parsed = parseBrazilianCurrencySafe(strValue);
-                if (parsed !== undefined) base.value = parsed;
+                if (parsed !== undefined) {
+                  base.value = parsed;
+                }
                 break;
               }
               case 'status':
                 base.status = this.normalizeStatus(strValue);
                 break;
               default:
-                base[assetField] = strValue;
+                (base as any)[assetField] = strValue;
                 break;
             }
           } else {
@@ -322,7 +394,7 @@ export class ImportService {
   }
 
   /**
-   *  Criar inventário a partir dos itens convertidos e salvar no Storage
+   * Criar inventário a partir dos itens convertidos e salvar no Storage
    */
   static async createInventoryFromCSV(
     name: string,
