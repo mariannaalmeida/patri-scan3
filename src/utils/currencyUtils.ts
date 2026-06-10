@@ -1,15 +1,49 @@
 /**
- * Converte uma string formatada no padrão brasileiro (ex: "1.500,00" ou "1500,00")
- * para um número.
+ * Converte uma string de valor monetário para número, lidando com sujeira
+ * (ex: "R$", espaços) e suportando tanto formato BR quanto US.
  *
- * @param value - String representando o valor monetário (pode conter separadores de milhar e vírgula decimal)
+ * Heurística de detecção:
+ * - Se tem vírgula E ponto, o último separador encontrado define o decimal.
+ *   Ex: "1.500,50" → vírgula é decimal (BR), "1,500.50" → ponto é decimal (US).
+ * - Se tem apenas vírgula → formato BR (ex: "1500,50").
+ * - Se tem apenas ponto → formato US (ex: "1500.50").
+ *
+ * @param value - String representando o valor monetário
  * @returns O número correspondente, ou NaN se a string for inválida.
  */
 export function parseBrazilianCurrency(value: string): number {
-  if (!value || !value.trim()) return NaN;
+  if (!value || typeof value !== 'string') return NaN;
 
-  // Remove pontos de milhar, substitui vírgula decimal por ponto
-  const sanitized = value.trim().replace(/\./g, '').replace(',', '.');
+  // 1. Remove TUDO que não for dígito, ponto ou vírgula (limpa "R$", letras, espaços)
+  let sanitized = value.replace(/[^\d.,]/g, '');
+
+  if (!sanitized) return NaN;
+
+  const hasComma = sanitized.includes(',');
+  const hasDot = sanitized.includes('.');
+
+  // 2. Se tiver ambos os separadores, decidir pelo último
+  if (hasComma && hasDot) {
+    const lastComma = sanitized.lastIndexOf(',');
+    const lastDot = sanitized.lastIndexOf('.');
+
+    if (lastDot > lastComma) {
+      // Formato inglês: 1,500.50 → vírgula é milhar, ponto é decimal
+      // Remove todas as vírgulas, mantém o ponto
+      sanitized = sanitized.replace(/,/g, '');
+    } else {
+      // Formato brasileiro: 1.500,50 → ponto é milhar, vírgula é decimal
+      // Remove todos os pontos e troca a vírgula por ponto
+      sanitized = sanitized.replace(/\./g, '').replace(',', '.');
+    }
+  } else if (hasComma) {
+    // 3. Só tem vírgula → formato BR (ex: "1500,50" ou "1500,00")
+    // Se tem ponto junto, já foi tratado no caso acima.
+    // Troca vírgula por ponto para parseFloat
+    sanitized = sanitized.replace(',', '.');
+  }
+  // 4. Se só tem ponto ou nenhum separador → parseFloat lida direto
+
   return parseFloat(sanitized);
 }
 

@@ -7,7 +7,7 @@
  */
 
 import { AssetItem, Inventory, isScannedItem } from '../types/types';
-import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../utils/dateUtils';
 
 // ─── Tipos de saída
 
@@ -170,6 +170,6 @@ export class AnalyticsService {
   }
 
   static formatDateTime(iso: string): string {
-    return `${formatDisplayDate(iso)} às ${formatDisplayTime(iso)}`;
+    return formatDisplayDateTime(iso);
   }
 }

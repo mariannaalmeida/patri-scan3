@@ -35,7 +35,6 @@ export function formatDisplayDate(date: string | Date, options?: { fallback?: st
   }
 }
 
-
 export function formatDisplayTime(date: string | Date): string {
   try {
     const dateObj = typeof date === 'string' ? new Date(date) : date;
@@ -44,4 +43,8 @@ export function formatDisplayTime(date: string | Date): string {
   } catch {
     return '';
   }
+}
+
+export function formatDisplayDateTime(date: string | Date): string {
+  return `${formatDisplayDate(date)} às ${formatDisplayTime(date)}`;
 }

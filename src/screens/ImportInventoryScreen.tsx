@@ -418,7 +418,7 @@ export const ImportInventoryScreen = () => {
 
       <View style={styles.header}>
         <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
+          <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Importar CSV</Text>
         <View style={{ width: 36 }} />

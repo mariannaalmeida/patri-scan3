@@ -1872,13 +1872,18 @@ export const createInventoryStyles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   header: {
-    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 56 : 36,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: '#ffffff0A',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
   },
@@ -1887,7 +1892,7 @@ export const createInventoryStyles = StyleSheet.create({
     padding: 20,
   },
   label: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '500',
     color: colors.text,
     marginBottom: 8,
@@ -2347,7 +2352,7 @@ export const manualInventoryStyles = StyleSheet.create({
   },
 
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: colors.text,
   },
