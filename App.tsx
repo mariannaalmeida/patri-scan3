@@ -9,6 +9,7 @@ import { RootStackParamList } from './src/types/types';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { ImportInventoryScreen } from './src/screens/ImportInventoryScreen';
 import { InventoryDetailScreen } from './src/screens/InventoryDetailScreen';
+import { ItemDetailScreen } from './src/screens/ItemDetailScreen';
 import { ManualInventoryScreen } from './src/screens/ManualInventoryScreen';
 import { ReportDetailScreen } from './src/screens/ReportDetailScreen';
 import { ReportsScreen } from './src/screens/ReportsScreen';
@@ -33,6 +34,9 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="InventoryDetail" component={InventoryDetailScreen} />
         <Stack.Screen name="Scanner" component={ScannerScreen} />
+
+        {/*  Detalhes do item */}
+        <Stack.Screen name="ItemDetail" component={ItemDetailScreen} />
 
         {/* Telas de relatório */}
         <Stack.Screen name="Reports" component={ReportsScreen} />

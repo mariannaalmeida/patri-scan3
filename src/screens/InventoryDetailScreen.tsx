@@ -356,7 +356,19 @@ export const InventoryDetailScreen = () => {
         // FIX: key usa apenas item.code — único dentro de um inventário por definição.
         // O index como parte da key causava reuso incorreto de componentes ao filtrar/ordenar.
         keyExtractor={(item) => item.code}
-        renderItem={({ item }) => <ItemRow item={item} />}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            onPress={() =>
+              navigation.navigate('ItemDetail', {
+                inventoryId: inventory.metadata.id,
+                itemCode: item.code,
+              })
+            }
+            activeOpacity={0.7}
+          >
+            <ItemRow item={item} />
+          </TouchableOpacity>
+        )}
         contentContainerStyle={[
           inventoryDetailStyles.listContent,
           filteredItems.length === 0 && inventoryDetailStyles.listContentEmpty,

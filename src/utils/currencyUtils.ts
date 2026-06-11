@@ -2,58 +2,100 @@
  * Converte uma string de valor monetário para número, lidando com sujeira
  * (ex: "R$", espaços) e suportando tanto formato BR quanto US.
  *
- * Heurística de detecção:
- * - Se tem vírgula E ponto, o último separador encontrado define o decimal.
- *   Ex: "1.500,50" → vírgula é decimal (BR), "1,500.50" → ponto é decimal (US).
- * - Se tem apenas vírgula → formato BR (ex: "1500,50").
- * - Se tem apenas ponto → formato US (ex: "1500.50").
- *
  * @param value - String representando o valor monetário
  * @returns O número correspondente, ou NaN se a string for inválida.
  */
+
+/**
+ * Converte valores monetários ou numéricos em formato BR ou US.
+ *
+ * Exemplos:
+ * "1.500,50"   -> 1500.50
+ * "1,500.50"   -> 1500.50
+ * "1500,50"    -> 1500.50
+ * "1500.50"    -> 1500.50
+ * "1.500"      -> 1500
+ * "1,500"      -> 1500
+ * "-1.500,50"  -> -1500.50
+ * "R$ 1.500"   -> 1500
+ */
 export function parseBrazilianCurrency(value: string): number {
-  if (!value || typeof value !== 'string') return NaN;
+  if (!value || typeof value !== 'string') {
+    return NaN;
+  }
 
-  // 1. Remove TUDO que não for dígito, ponto ou vírgula (limpa "R$", letras, espaços)
-  let sanitized = value.replace(/[^\d.,]/g, '');
+  const isNegative = value.includes('-');
 
-  if (!sanitized) return NaN;
+  let sanitized = value.replace(/[^\d.,-]/g, '').replace(/-/g, '');
+
+  if (!sanitized) {
+    return NaN;
+  }
 
   const hasComma = sanitized.includes(',');
   const hasDot = sanitized.includes('.');
 
-  // 2. Se tiver ambos os separadores, decidir pelo último
   if (hasComma && hasDot) {
     const lastComma = sanitized.lastIndexOf(',');
     const lastDot = sanitized.lastIndexOf('.');
 
-    if (lastDot > lastComma) {
-      // Formato inglês: 1,500.50 → vírgula é milhar, ponto é decimal
-      // Remove todas as vírgulas, mantém o ponto
-      sanitized = sanitized.replace(/,/g, '');
-    } else {
-      // Formato brasileiro: 1.500,50 → ponto é milhar, vírgula é decimal
-      // Remove todos os pontos e troca a vírgula por ponto
+    if (lastComma > lastDot) {
+      // BR: 1.500,50
       sanitized = sanitized.replace(/\./g, '').replace(',', '.');
+    } else {
+      // US: 1,500.50
+      sanitized = sanitized.replace(/,/g, '');
     }
   } else if (hasComma) {
-    // 3. Só tem vírgula → formato BR (ex: "1500,50" ou "1500,00")
-    // Se tem ponto junto, já foi tratado no caso acima.
-    // Troca vírgula por ponto para parseFloat
-    sanitized = sanitized.replace(',', '.');
-  }
-  // 4. Se só tem ponto ou nenhum separador → parseFloat lida direto
+    const parts = sanitized.split(',');
 
-  return parseFloat(sanitized);
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      // 1,500 ou 1,234,567
+      sanitized = sanitized.replace(/,/g, '');
+    } else {
+      // 1500,50
+      sanitized = sanitized.replace(',', '.');
+    }
+  } else if (hasDot) {
+    const parts = sanitized.split('.');
+
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      // 1.500 ou 1.234.567
+      sanitized = sanitized.replace(/\./g, '');
+    }
+  }
+
+  const parsed = Number(sanitized);
+
+  if (Number.isNaN(parsed)) {
+    return NaN;
+  }
+
+  return isNegative ? -parsed : parsed;
 }
 
-/**
- * Versão segura que retorna `undefined` caso o valor seja inválido ou vazio.
- *
- * @param value - String a ser convertida
- * @returns número ou undefined
- */
-export function parseBrazilianCurrencySafe(value: string): number | undefined {
+export function parseBrazilianCurrencySafe(value?: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
   const parsed = parseBrazilianCurrency(value);
-  return isNaN(parsed) ? undefined : parsed;
+
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+// Instancia o formatador uma única vez em memória para melhor performance
+const brlFormatter = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function formatBrazilianCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return '';
+  }
+
+  return brlFormatter.format(value);
 }

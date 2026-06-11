@@ -2688,3 +2688,116 @@ export const localStyles = StyleSheet.create({
     marginBottom: 10,
   },
 });
+export const itemDetailStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: colors.bg,
+  },
+  backBtn: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  statusSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  statusBadgeScanned: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success + '20',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  statusTextScanned: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.success,
+  },
+  statusBadgePending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentWarn + '20',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  statusTextPending: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.accentWarn,
+  },
+  section: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    color: colors.textDim,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  codeValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.accent,
+    letterSpacing: 1,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#ffffff0A',
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  fieldIcon: {
+    width: 32,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  fieldContent: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    color: colors.textDim,
+    marginBottom: 2,
+  },
+  fieldValue: {
+    fontSize: 16,
+    color: colors.text,
+  },
+});

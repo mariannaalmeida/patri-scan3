@@ -187,7 +187,7 @@ export type RootStackParamList = {
   };
   // Relatórios
   Reports: undefined;
-  
+
   ReportDetail: {
     inventoryId: string;
     inventoryName?: string;
@@ -197,6 +197,10 @@ export type RootStackParamList = {
   ManualInventory: undefined; // Cadastro manual
   // Configurações
   Settings: undefined;
+  ItemDetail: {
+    inventoryId: string;
+    itemCode: string;
+  };
 };
 
 // --- Export ---
