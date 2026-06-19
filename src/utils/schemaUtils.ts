@@ -7,7 +7,6 @@ export function generateBasicSchema(
   const fixedFields: FieldDefinition[] = [
     { name: 'code', label: 'Código', type: 'text', required: true, fixed: true },
     { name: 'description', label: 'Descrição', type: 'text', required: false, fixed: true },
-    { name: 'department', label: 'Departamento', type: 'text', required: false, fixed: true },
     { name: 'location', label: 'Localização', type: 'text', required: false, fixed: true },
     {
       name: 'status',

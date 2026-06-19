@@ -5,12 +5,12 @@
  *   - Gráfico de pizza (encontrados vs. pendentes)
  *   - Barra de progresso geral
  *   - Linha do tempo de scans
- *   - Tabela por departamento
  *   - Tabela por localização
  *   - Lista de itens não encontrados
  *   - Histórico de scans com timestamp
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
@@ -24,7 +24,6 @@ import {
   View,
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { Ionicons } from '@expo/vector-icons';
 import {
   AnalyticsService,
   GroupStat,
@@ -36,7 +35,7 @@ import { CSVExportService } from '../services/CsvExportService';
 import { ReportService } from '../services/ReportService';
 import { StorageService } from '../services/StorageService';
 import { colors, reportDetailStyles } from '../styles/theme';
-import { RootStackParamList, InventorySchema } from '../types/types';
+import { InventorySchema, RootStackParamList } from '../types/types';
 
 //  Navegação
 type DetailRoute = RouteProp<RootStackParamList, 'ReportDetail'>;
@@ -104,14 +103,6 @@ export const ReportDetailScreen = () => {
     () =>
       report && report.scanTimeline.length > 0
         ? ChartService.buildTimelineChart(report.scanTimeline, 300, 110)
-        : '',
-    [report]
-  );
-
-  const deptSvg = useMemo(
-    () =>
-      report && report.byDepartment.length > 0
-        ? ChartService.buildBarChart(report.byDepartment, 300, 140)
         : '',
     [report]
   );
@@ -398,16 +389,6 @@ export const ReportDetailScreen = () => {
           </Section>
         )}
 
-        {/* ── Por departamento ── */}
-        {report.byDepartment.length > 0 && deptSvg && (
-          <Section title="Por departamento">
-            <View style={styles.chartDark}>
-              <SvgXml xml={deptSvg} width="100%" height={140} />
-            </View>
-            <GroupTable groups={report.byDepartment} />
-          </Section>
-        )}
-
         {/* ── Por localização ── */}
         {report.byLocation.length > 0 && localSvg && (
           <Section title="Por localização">
@@ -446,11 +427,6 @@ export const ReportDetailScreen = () => {
                     {item.location ? (
                       <Text style={styles.itemMetaTxt}>
                         <Ionicons name="location-outline" size={12} /> {item.location}
-                      </Text>
-                    ) : null}
-                    {item.department ? (
-                      <Text style={styles.itemMetaTxt}>
-                        <Ionicons name="business-outline" size={12} /> {item.department}
                       </Text>
                     ) : null}
                   </View>

@@ -33,7 +33,6 @@ export interface ScanEvent {
   code: string;
   description: string;
   location: string;
-  department: string;
   scanDate: string; // ISO (só existe para found items)
   minutesFromStart: number; // delta desde o primeiro scan
 }
@@ -42,7 +41,6 @@ export interface InventoryReport {
   inventoryName: string;
   generatedAt: string; // ISO
   overall: OverallStats;
-  byDepartment: GroupStat[];
   byLocation: GroupStat[];
   scanTimeline: ScanEvent[];
   notFoundItems: AssetItem[];
@@ -62,7 +60,6 @@ export class AnalyticsService {
     const notFoundItems = inventory.items.filter((item) => !item.found);
 
     const overall = this.computeOverall(inventory, foundItems);
-    const byDepartment = this.computeByGroup(inventory, 'department');
     const byLocation = this.computeByGroup(inventory, 'location');
     const scanTimeline = this.computeTimeline(foundItems, overall.startedAt);
 
@@ -70,7 +67,6 @@ export class AnalyticsService {
       inventoryName: inventory.metadata.name,
       generatedAt: new Date().toISOString(),
       overall,
-      byDepartment,
       byLocation,
       scanTimeline,
       notFoundItems,
@@ -107,10 +103,7 @@ export class AnalyticsService {
 
   // Agrupamento por campo
 
-  private static computeByGroup(
-    inventory: Inventory,
-    field: 'department' | 'location'
-  ): GroupStat[] {
+  private static computeByGroup(inventory: Inventory, field: 'location'): GroupStat[] {
     const groups = new Map<string, { total: number; found: number }>();
 
     for (const item of inventory.items) {
@@ -152,7 +145,6 @@ export class AnalyticsService {
           code: item.code,
           description: item.description ?? '',
           location: item.location ?? '',
-          department: item.department ?? '',
           scanDate: item.scanDate,
           minutesFromStart: startMs !== null ? Math.round((scanMs - startMs) / 60000) : 0,
         };

@@ -493,7 +493,7 @@ const ItemRow = React.memo(({ item }: ItemRowProps) => {
           </Text>
         ) : null}
 
-        <ItemMeta location={item.location} department={item.department} scanTime={scanTime} />
+        <ItemMeta location={item.location} scanTime={scanTime} />
 
         {customFieldsEntries.length > 0 && <CustomFields fields={item.customFields!} />}
       </View>
@@ -505,11 +505,11 @@ const ItemRow = React.memo(({ item }: ItemRowProps) => {
 
 interface ItemMetaProps {
   location?: string;
-  department?: string;
+
   scanTime: string | null;
 }
 
-const ItemMeta = React.memo(({ location, department, scanTime }: ItemMetaProps) => (
+const ItemMeta = React.memo(({ location, scanTime }: ItemMetaProps) => (
   <View style={inventoryDetailStyles.itemMeta}>
     {location && (
       <View style={inventoryDetailStyles.metaItem}>
@@ -517,12 +517,7 @@ const ItemMeta = React.memo(({ location, department, scanTime }: ItemMetaProps) 
         <Text style={inventoryDetailStyles.itemMetaText}> {location}</Text>
       </View>
     )}
-    {department && (
-      <View style={inventoryDetailStyles.metaItem}>
-        <Ionicons name="business-outline" size={14} color={colors.textDim} />
-        <Text style={inventoryDetailStyles.itemMetaText}> {department}</Text>
-      </View>
-    )}
+
     {scanTime && (
       <View style={inventoryDetailStyles.metaItem}>
         <Ionicons name="time-outline" size={14} color={colors.textDim} />

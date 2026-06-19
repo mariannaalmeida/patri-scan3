@@ -8,13 +8,13 @@ export type AssetCode = string;
 
 // Mantém autocomplete para os fixos e permite strings customizadas
 
-export type KnownFields = 'code' | 'description' | 'department' | 'location' | 'status' | 'value';
+export type KnownFields = 'code' | 'description' | 'location' | 'status' | 'value';
 
 export type MappableField = KnownFields | (string & {});
 
 // Type Guard: Retorna true e ensina ao compilador que a string pertence aos campos nativos
 export const isStandardField = (field: string): field is KnownFields => {
-  return ['code', 'description', 'department', 'location', 'status', 'value'].includes(field);
+  return ['code', 'description', 'location', 'status', 'value'].includes(field);
 };
 
 export type AssetStatus = 'good' | 'damaged' | 'missing' | 'in_repair';
@@ -22,7 +22,6 @@ export type AssetStatus = 'good' | 'damaged' | 'missing' | 'in_repair';
 export interface AssetItemBase {
   code: AssetCode;
   description: string;
-  department: string;
   location: string;
   status: AssetStatus;
   value?: number;

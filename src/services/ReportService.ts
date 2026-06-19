@@ -10,11 +10,11 @@
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { InventoryReport, AnalyticsService } from './AnalyticsService';
-import { ChartService } from './ChartService';
 import { Result } from '../types/types';
 import { handleServiceError } from '../utils/errorUtils';
-import { escapeHtml, checkIconSVG } from '../utils/htmlUtils';
+import { checkIconSVG, escapeHtml } from '../utils/htmlUtils';
+import { AnalyticsService, InventoryReport } from './AnalyticsService';
+import { ChartService } from './ChartService';
 
 export class ReportService {
   /**
@@ -50,7 +50,7 @@ export class ReportService {
   // ─── Builder HTML ──────────────────────────────────────────────────────────
 
   private static buildHTML(report: InventoryReport): string {
-    const { overall, byDepartment, byLocation, scanTimeline, notFoundItems } = report;
+    const { overall, byLocation, scanTimeline, notFoundItems } = report;
 
     const pieSvg = ChartService.buildPieChart({
       found: overall.found,
@@ -59,7 +59,6 @@ export class ReportService {
     });
 
     const timelineSvg = ChartService.buildTimelineChart(scanTimeline, 480, 130);
-    const deptSvg = ChartService.buildBarChart(byDepartment, 480, 150);
     const localSvg = ChartService.buildBarChart(byLocation, 480, 150);
 
     const generatedAt = AnalyticsService.formatDateTime(report.generatedAt);
@@ -202,37 +201,7 @@ export class ReportService {
     }
   </div>
 
-  <!-- Distribuição (pizza + top departamentos) -->
-  <div class="section">
-    <div class="section-title">Distribuição</div>
-    <div class="chart-row">
-      <div class="pie-box">${pieSvg}</div>
-      <div class="chart-box">
-        <p style="font-size:11px;color:#6B6B88;margin-bottom:12px;">
-          ${
-            overall.progressPct === 100
-              ? `${checkIconSVG()} Todos os itens foram localizados.`
-              : `Faltam <strong>${overall.pending}</strong> ite${overall.pending === 1 ? 'm' : 'ns'} para concluir.`
-          }
-        </p>
-        ${byDepartment
-          .slice(0, 5)
-          .map(
-            (g) => `
-        <div style="margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">
-            <span style="color:#2a2a3e;font-weight:600;">${escapeHtml(g.label)}</span>
-            <span style="color:#00C87A;font-weight:700;">${g.progressPct}%</span>
-          </div>
-          <div class="progress-track" style="height:5px;">
-            <div class="progress-fill" style="width:${g.progressPct}%;background:${g.progressPct === 100 ? '#00E5A0' : '#534AB7'}"></div>
-          </div>
-        </div>`
-          )
-          .join('')}
-      </div>
-    </div>
-  </div>
+
 
   <!-- Linha do tempo -->
   ${
@@ -254,32 +223,7 @@ export class ReportService {
       : ''
   }
 
-  <!-- Por departamento -->
-  ${
-    byDepartment.length > 0
-      ? `
-  <div class="section">
-    <div class="section-title">Progresso por departamento</div>
-    <div class="chart-dark">${deptSvg}</div>
-    <table class="group-table" style="margin-top:10px;">
-      <thead><tr><th>Departamento</th><th>Total</th><th>Encontrados</th><th>Pendentes</th><th>%</th></tr></thead>
-      <tbody>
-        ${byDepartment
-          .map(
-            (g) => `<tr>
-          <td>${escapeHtml(g.label)}</td>
-          <td>${g.total}</td>
-          <td>${g.found}</td>
-          <td>${g.pending}</td>
-          <td class="pct">${g.progressPct}%</td>
-        </tr>`
-          )
-          .join('')}
-      </tbody>
-    </table>
-  </div>`
-      : ''
-  }
+
 
   <!-- Por localização -->
   ${
@@ -315,14 +259,13 @@ export class ReportService {
   <div class="section">
     <div class="section-title">Itens não encontrados (${notFoundItems.length})</div>
     <table>
-      <thead><tr><th>Código</th><th>Descrição</th><th>Departamento</th><th>Localização</th></tr></thead>
+      <thead><tr><th>Código</th><th>Descrição</th><th>Localização</th></tr></thead>
       <tbody>
         ${notFoundItems
           .map(
             (item) => `<tr>
           <td class="code">${escapeHtml(item.code)}</td>
           <td>${escapeHtml(item.description ?? '—')}</td>
-          <td>${escapeHtml(item.department ?? '—')}</td>
           <td>${escapeHtml(item.location ?? '—')}</td>
         </tr>`
           )

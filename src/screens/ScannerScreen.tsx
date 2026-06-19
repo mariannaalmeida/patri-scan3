@@ -620,9 +620,6 @@ const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: Confirm
               {item.location ? (
                 <DetailRow icon="location-outline" label="Localização" value={item.location} />
               ) : null}
-              {item.department ? (
-                <DetailRow icon="business-outline" label="Departamento" value={item.department} />
-              ) : null}
               {item.status ? (
                 <DetailRow
                   icon="information-circle-outline"

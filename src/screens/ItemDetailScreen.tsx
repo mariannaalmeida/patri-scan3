@@ -15,6 +15,7 @@ import { colors, commonStyles, itemDetailStyles } from '../styles/theme';
 import { AssetItem, AssetStatus, RootStackParamList, isScannedItem } from '../types/types';
 import { formatBrazilianCurrency } from '../utils/currencyUtils';
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
+
 type ItemDetailRouteProp = RouteProp<RootStackParamList, 'ItemDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -131,7 +132,6 @@ export const ItemDetailScreen = () => {
         {/* Informações principais */}
         <View style={itemDetailStyles.card}>
           <DetailField icon="cube-outline" label="Descrição" value={item.description} />
-          <DetailField icon="business-outline" label="Departamento" value={item.department} />
           <DetailField icon="location-outline" label="Localização" value={item.location} />
           <DetailField
             icon="information-circle-outline"

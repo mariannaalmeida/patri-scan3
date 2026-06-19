@@ -536,11 +536,7 @@ const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
             <Ionicons name="location-outline" size={11} /> {asset.location}
           </Text>
         )}
-        {asset.department && (
-          <Text style={homeStyles.itemMetaText}>
-            <Ionicons name="business-outline" size={11} /> {asset.department}
-          </Text>
-        )}
+        
         <Text style={homeStyles.itemMetaInv}>
           <Ionicons name="folder-outline" size={11} /> {asset.inventoryName}
         </Text>

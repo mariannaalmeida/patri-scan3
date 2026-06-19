@@ -42,7 +42,6 @@ interface ManualItem {
   id: string;
   code: string;
   description: string;
-  department: string;
   location: string;
   status: AssetStatus;
   value: string;
@@ -62,7 +61,6 @@ const createEmptyItem = (): ManualItem => ({
   id: Date.now().toString() + Math.random().toString(36).slice(2),
   code: '',
   description: '',
-  department: '',
   location: '',
   status: 'good',
   value: '',
@@ -211,7 +209,6 @@ export const ManualInventoryScreen = () => {
       const assetItems: AssetItem[] = items.map((item) => ({
         code: item.code.trim(),
         description: item.description.trim(),
-        department: item.department.trim(),
         location: item.location.trim(),
         status: item.status,
         value: parseBrazilianCurrencySafe(item.value),
@@ -383,16 +380,6 @@ export const ManualInventoryScreen = () => {
               />
 
               <View style={styles.row}>
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>Departamento</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={item.department}
-                    onChangeText={(v) => updateItem(item.id, 'department', v)}
-                    placeholder="Ex: TI, RH…"
-                    placeholderTextColor={colors.textDim}
-                  />
-                </View>
                 <View style={styles.halfField}>
                   <Text style={styles.fieldLabel}>Localização</Text>
                   <TextInput

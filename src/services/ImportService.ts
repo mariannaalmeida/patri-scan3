@@ -178,7 +178,6 @@ export class ImportService {
     const fieldKeywords: Partial<Record<MappableField, string[]>> = {
       code: ['código', 'codigo', 'code', 'patrimônio', 'patrimonio', 'tombo', 'id', 'registro'],
       description: ['descrição', 'descricao', 'description', 'nome', 'item', 'produto', 'bem'],
-      department: ['departamento', 'departament', 'setor', 'divisão', 'divisao', 'unidade'],
       location: ['local', 'localização', 'localizacao', 'location', 'sala', 'andar', 'prédio'],
       status: ['status', 'estado', 'situação', 'situacao', 'condição', 'condicao'],
       value: ['valor', 'value', 'preço', 'preco', 'custo', 'montante'],
@@ -353,7 +352,6 @@ export class ImportService {
       const base: AssetItemBase = {
         code: '',
         description: '',
-        department: '',
         location: '',
         status: 'good',
         value: undefined,

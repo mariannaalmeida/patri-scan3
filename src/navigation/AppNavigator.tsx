@@ -11,6 +11,7 @@ import { RootStackParamList } from '../types/types';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ImportInventoryScreen } from '../screens/ImportInventoryScreen';
 import { InventoryDetailScreen } from '../screens/InventoryDetailScreen';
+import { ItemDetailScreen } from '../screens/ItemDetailScreen';
 import { ManualInventoryScreen } from '../screens/ManualInventoryScreen';
 import { ReportDetailScreen } from '../screens/ReportDetailScreen';
 import { ReportsScreen } from '../screens/ReportsScreen';
@@ -34,6 +35,8 @@ export const AppNavigator = () => {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="InventoryDetail" component={InventoryDetailScreen} />
         <Stack.Screen name="Scanner" component={ScannerScreen} />
+        {/*  Detalhes do item */}
+        <Stack.Screen name="ItemDetail" component={ItemDetailScreen} />
         {/* Telas de relatório */}
         <Stack.Screen name="Reports" component={ReportsScreen} />
         <Stack.Screen name="ReportDetail" component={ReportDetailScreen} />

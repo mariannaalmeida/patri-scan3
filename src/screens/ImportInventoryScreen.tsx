@@ -24,7 +24,6 @@ type Step = 'initial' | 'mapping' | 'validation' | 'processing';
 const MAPPABLE_FIELDS: MappableField[] = [
   'code',
   'description',
-  'department',
   'location',
   'status',
   'value',
@@ -34,7 +33,6 @@ const MAPPABLE_FIELDS: MappableField[] = [
 const FIELD_LABELS: Record<string, string> = {
   code: 'Código',
   description: 'Descrição',
-  department: 'Departamento',
   location: 'Localização',
   status: 'Status',
   value: 'Valor',

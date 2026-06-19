@@ -118,7 +118,6 @@ export class CSVExportService {
       const header = csvRow([
         'Código',
         'Descrição',
-        'Departamento',
         'Localização',
         'Status',
         'Valor',
@@ -133,7 +132,6 @@ export class CSVExportService {
         return csvRow([
           item.code,
           item.description,
-          item.department,
           item.location,
           item.status,
           item.value,
@@ -165,7 +163,6 @@ export class CSVExportService {
       const header = csvRow([
         'Código',
         'Descrição',
-        'Departamento',
         'Localização',
         'Status',
         'Valor',
@@ -177,7 +174,6 @@ export class CSVExportService {
         return csvRow([
           item.code,
           item.description,
-          item.department,
           item.location,
           item.status,
           item.value,
@@ -207,7 +203,6 @@ export class CSVExportService {
       const header = csvRow([
         'Código',
         'Descrição',
-        'Departamento',
         'Localização',
         'Status Original',
         'Valor',
@@ -230,7 +225,6 @@ export class CSVExportService {
         return csvRow([
           item.code,
           item.description,
-          item.department,
           item.location,
           item.status,
           item.value,
