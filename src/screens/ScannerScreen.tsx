@@ -51,6 +51,13 @@ export const ScannerScreen = () => {
   const [pendingItem, setPendingItem] = useState<AssetItem | null>(null);
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
 
+  // ─── NOVOS ESTADOS PARA ITEM NÃO LISTADO ──────────────────────────────
+  const [isUnexpectedModalVisible, setIsUnexpectedModalVisible] = useState(false);
+  const [pendingUnexpectedCode, setPendingUnexpectedCode] = useState<string | null>(null);
+  const [unexpectedDescription, setUnexpectedDescription] = useState('');
+  const [unexpectedLocation, setUnexpectedLocation] = useState('');
+  // ──────────────────────────────────────────────────────────────────────
+
   const [alerts, setAlerts] = useState<AlertBanner[]>([]);
   const alertCounter = useRef(0);
   const alertTimeouts = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
@@ -62,7 +69,6 @@ export const ScannerScreen = () => {
   const lastItemAnim = useRef(new Animated.Value(0)).current;
   const [lastScanned, setLastScanned] = useState<AssetItem | null>(null);
 
-  // Flag para evitar múltiplas confirmações simultâneas
   const confirmingRef = useRef(false);
 
   // Limpeza de todos os timeouts ao desmontar
@@ -146,13 +152,47 @@ export const ScannerScreen = () => {
     }).start();
   }, [lastItemAnim]);
 
+  // ─── REGISTRAR ITEM NÃO LISTADO ──────────────────────────────────────
+  const handleRegisterUnexpected = useCallback(async () => {
+    if (!inventory || !pendingUnexpectedCode) return;
+
+    try {
+      const result = await ScannerService.registerUnexpectedItem(
+        inventory.metadata.id,
+        pendingUnexpectedCode,
+        unexpectedDescription.trim() || undefined,
+        unexpectedLocation.trim() || undefined
+      );
+
+      if (result.ok) {
+        setInventory(result.value);
+        showAlert('success', `Item "${pendingUnexpectedCode}" registrado como não listado.`);
+      } else {
+        showAlert('error', result.error.message);
+      }
+    } catch (err) {
+      showAlert('error', 'Falha ao registrar item não listado.');
+    } finally {
+      setIsUnexpectedModalVisible(false);
+      setPendingUnexpectedCode(null);
+      setUnexpectedDescription('');
+      setUnexpectedLocation('');
+    }
+  }, [inventory, pendingUnexpectedCode, unexpectedDescription, unexpectedLocation, showAlert]);
+
+  const handleCancelUnexpected = useCallback(() => {
+    setIsUnexpectedModalVisible(false);
+    setPendingUnexpectedCode(null);
+    setUnexpectedDescription('');
+    setUnexpectedLocation('');
+  }, []);
+  // ──────────────────────────────────────────────────────────────────────
+
   // Lógica de scan
   const handleCodeScanned = useCallback(
     (code: string) => {
-      // OTIMIZAÇÃO: Ignora leitura se o modal de confirmação estiver aberto
-      if (!inventory || isConfirmVisible || pendingItem) return;
+      if (!inventory || isConfirmVisible || pendingItem || isUnexpectedModalVisible) return;
 
-      // Apenas log em desenvolvimento
       if (__DEV__) {
         console.log('[Scanner] Código capturado:', code);
       }
@@ -175,7 +215,6 @@ export const ScannerScreen = () => {
       const feedback = ScannerService.getFeedback(match);
 
       if (match.status === 'found' && match.item) {
-        // OTIMIZAÇÃO: Não desliga a câmera - mantém o hardware aquecido
         setPendingItem(match.item);
         setIsConfirmVisible(true);
         Vibration.vibrate(80);
@@ -184,17 +223,36 @@ export const ScannerScreen = () => {
         showAlert('warning', feedback.message);
       } else if (match.status === 'not_found') {
         Vibration.vibrate([0, 100, 50, 100]);
-        showAlert('error', feedback.message);
+        // ─── NOVO FLUXO: ALERTA COM OPÇÕES ──────────────────────────
+        Alert.alert(
+          'Código não encontrado',
+          `"${normalizedCode}" não está no inventário. Deseja registrá-lo como item não listado?`,
+          [
+            {
+              text: 'Ignorar',
+              style: 'cancel',
+            },
+            {
+              text: 'Registrar',
+              onPress: () => {
+                setPendingUnexpectedCode(normalizedCode);
+                // Preenche a localização com a localização fixa do inventário, se existir
+                setUnexpectedLocation(inventory.metadata.location || '');
+                setIsUnexpectedModalVisible(true);
+              },
+            },
+          ]
+        );
+        // ──────────────────────────────────────────────────────────────
       }
     },
-    [inventory, isConfirmVisible, pendingItem, showAlert]
+    [inventory, isConfirmVisible, pendingItem, isUnexpectedModalVisible, showAlert]
   );
 
   // Confirmação do scan
   const handleConfirm = useCallback(async () => {
     if (!pendingItem || !inventory || confirmingRef.current) return;
 
-    // Capturar item antes de limpar o estado
     const itemToConfirm = pendingItem;
     confirmingRef.current = true;
 
@@ -212,17 +270,32 @@ export const ScannerScreen = () => {
       const result = await ScannerService.confirmScan(inventory.metadata.id, itemToConfirm);
 
       if (result.ok) {
-        const updatedInventory = result.value.updatedInventory;
-        setInventory(updatedInventory);
-        setLastScanned(itemToConfirm);
-        animateLastItem();
+        const { updatedItem } = result.value;
 
-        showAlert(
-          'success',
-          `${itemToConfirm.description || itemToConfirm.code} escaneado com sucesso.`
+        // 1. MONTAMOS O NOVO INVENTÁRIO AQUI FORA
+        const newItems = inventory.items.map((i) =>
+          i.code === updatedItem.code ? updatedItem : i
         );
 
+        const updatedInventory = {
+          ...inventory,
+          items: newItems,
+        };
+
+        // 2. ATUALIZAMOS O ESTADO UMA ÚNICA VEZ (Função 100% pura)
+        setInventory(updatedInventory);
+
+        // 3. EFEITOS VISUAIS E ANIMAÇÕES
+        setLastScanned(updatedItem);
+        animateLastItem();
+        showAlert(
+          'success',
+          `${updatedItem.description || updatedItem.code} escaneado com sucesso.`
+        );
+
+        // 4. VERIFICAÇÃO DE PROGRESSO USANDO A NOSSA VARIÁVEL LOCAL
         const newProgress = ScannerService.getProgress(updatedInventory);
+
         if (newProgress.remaining === 0) {
           setTimeout(() => {
             Alert.alert('Inventário completo', 'Todos os itens foram escaneados.', [
@@ -252,7 +325,7 @@ export const ScannerScreen = () => {
     } finally {
       confirmingRef.current = false;
     }
-  }, [pendingItem, inventory, animateLastItem, showAlert, navigation]);
+  }, [pendingItem, inventory, animateLastItem, showAlert, navigation, inventoryId]);
 
   // Cancelar confirmação
   const handleCancelConfirm = useCallback(() => {
@@ -474,11 +547,111 @@ export const ScannerScreen = () => {
         onConfirm={handleConfirm}
         onCancel={handleCancelConfirm}
       />
+
+      {/* ─── NOVO MODAL: ITEM NÃO LISTADO ────────────────────────────── */}
+
+      <UnexpectedModal
+        visible={isUnexpectedModalVisible}
+        code={pendingUnexpectedCode}
+        description={unexpectedDescription}
+        location={unexpectedLocation}
+        onChangeDescription={setUnexpectedDescription}
+        onChangeLocation={setUnexpectedLocation}
+        onConfirm={handleRegisterUnexpected}
+        onCancel={handleCancelUnexpected}
+      />
+      {/* ──────────────────────────────────────────────────────────────── */}
     </View>
   );
 };
 
-// ─── Subcomponentes ─────────────────────────────────────────────────────────
+// ─── Subcomponentes (inalterados) ────────────────────────────────────────
+
+interface UnexpectedModalProps {
+  visible: boolean;
+  code: string | null;
+  description: string;
+  location: string;
+  onChangeDescription: (text: string) => void;
+  onChangeLocation: (text: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+const UnexpectedModal = React.memo(
+  ({
+    visible,
+    code,
+    description,
+    location,
+    onChangeDescription,
+    onChangeLocation,
+    onConfirm,
+    onCancel,
+  }: UnexpectedModalProps) => {
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={scannerStyles.modalOverlay}
+        >
+          <View style={scannerStyles.modalSheet}>
+            <View style={scannerStyles.modalHandle} />
+            <Text style={scannerStyles.modalTitle}>Registrar item não listado</Text>
+            <Text style={scannerStyles.modalSubtitle}>
+              Este código não pertence ao inventário. Registre-o para constar no relatório.
+            </Text>
+
+            <ScrollView
+              style={{ marginTop: 16, width: '100%' }}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={scannerStyles.detailLabel}>Código</Text>
+              <Text
+                style={[
+                  scannerStyles.detailValue,
+                  scannerStyles.detailValueHighlight,
+                  { marginBottom: 12 },
+                ]}
+              >
+                {code}
+              </Text>
+
+              <Text style={scannerStyles.detailLabel}>Descrição (opcional)</Text>
+              <TextInput
+                style={[scannerStyles.manualInput, { marginBottom: 12, width: '100%' }]}
+                value={description}
+                onChangeText={onChangeDescription}
+                placeholder="Ex: Monitor Dell 24'"
+                placeholderTextColor="#555"
+              />
+
+              <Text style={scannerStyles.detailLabel}>Localização (opcional)</Text>
+              <TextInput
+                style={[scannerStyles.manualInput, { marginBottom: 12, width: '100%' }]}
+                value={location}
+                onChangeText={onChangeLocation}
+                placeholder="Ex: Sala 101"
+                placeholderTextColor="#555"
+              />
+            </ScrollView>
+
+            <View style={scannerStyles.modalActions}>
+              <TouchableOpacity style={scannerStyles.cancelBtn} onPress={onCancel}>
+                <Text style={scannerStyles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={scannerStyles.confirmBtn} onPress={onConfirm}>
+                <Ionicons name="add-circle" size={20} color="#000" />
+                <Text style={scannerStyles.confirmBtnText}>Registrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    );
+  }
+);
 
 interface CameraAreaProps {
   permission: { granted: boolean } | null;
@@ -509,7 +682,6 @@ const CameraArea = React.memo(
     }
     return (
       <View style={scannerStyles.cameraWrapper}>
-        {/* OTIMIZAÇÃO: Câmera sempre renderizada - nunca desmonta */}
         <CameraView
           style={{ flex: 1 }}
           facing="back"
@@ -590,12 +762,6 @@ interface ConfirmModalProps {
 }
 
 const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: ConfirmModalProps) => {
-  const STATUS_LABELS = {
-    good: 'Bom estado',
-    damaged: 'Danificado',
-    missing: 'Extraviado',
-    in_repair: 'Em manutenção',
-  };
   const customFieldsEntries = item?.customFields ? Object.entries(item.customFields) : [];
 
   return (
@@ -619,13 +785,6 @@ const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: Confirm
               ) : null}
               {item.location ? (
                 <DetailRow icon="location-outline" label="Localização" value={item.location} />
-              ) : null}
-              {item.status ? (
-                <DetailRow
-                  icon="information-circle-outline"
-                  label="Status"
-                  value={STATUS_LABELS[item.status]}
-                />
               ) : null}
               {item.value ? (
                 <DetailRow

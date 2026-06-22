@@ -11,7 +11,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { InventoryReport } from '../services/AnalyticsService';
-import { InventorySchema, Result, isScannedItem } from '../types/types';
+import { AssetItem, InventorySchema, Result, isScannedItem } from '../types/types';
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
 
@@ -42,6 +42,69 @@ function csvRow(fields: (string | number | null | undefined)[]): string {
 function getCustomFieldNames(schema?: InventorySchema): string[] {
   if (!schema || !schema.fields) return [];
   return schema.fields.filter((f) => !f.fixed).map((f) => f.name);
+}
+
+/**
+ * Determina dinamicamente quais colunas (entre os campos base e customizados) serão incluídas,
+ * com base na presença de pelo menos um valor não vazio nos itens.
+ */
+function resolveColumns(
+  items: AssetItem[],
+  schema?: InventorySchema
+): {
+  columns: string[]; // nomes das colunas para o header
+  getRow: (item: AssetItem, scanDateObj?: Date | null) => (string | number | undefined | null)[];
+} {
+  const customFieldNames = getCustomFieldNames(schema);
+
+  // Mapeamento dos campos base que queremos condicionais
+  const baseFields = [
+    { key: 'code', label: 'Código', required: true }, // código sempre incluído
+    { key: 'description', label: 'Descrição', required: false },
+    { key: 'location', label: 'Localização', required: false },
+    { key: 'value', label: 'Valor', required: false },
+  ];
+
+  // Verifica quais campos base (não obrigatórios) possuem ao menos um valor não vazio
+  const baseColumns = baseFields
+    .filter((field) => {
+      if (field.required) return true;
+      return items.some((item) => {
+        const val = (item as any)[field.key];
+        return val !== null && val !== undefined && String(val).trim() !== '';
+      });
+    })
+    .map((f) => f.label);
+
+  // Campos customizados: incluir apenas se existe ao menos um item com valor para aquele campo
+  const activeCustomFields = customFieldNames.filter((fieldName) =>
+    items.some((item) => {
+      const val = item.customFields?.[fieldName];
+      return val !== null && val !== undefined && String(val).trim() !== '';
+    })
+  );
+
+  const columns = [...baseColumns, ...activeCustomFields];
+
+  const getRow = (item: AssetItem, scanDateObj?: Date | null) => {
+    const row: (string | number | undefined | null)[] = [];
+    // Preenche na ordem das colunas selecionadas
+    baseFields.forEach((field) => {
+      if (baseColumns.includes(field.label)) {
+        if (field.key === 'code') row.push(item.code);
+        else if (field.key === 'description') row.push(item.description);
+        else if (field.key === 'location') row.push(item.location);
+        else if (field.key === 'value') row.push(item.value);
+      }
+    });
+    activeCustomFields.forEach((fieldName) => {
+      row.push(item.customFields?.[fieldName] || '');
+    });
+    // Se houver dados de scan, são sempre incluídos se passados
+    return row;
+  };
+
+  return { columns, getRow };
 }
 
 /**
@@ -104,6 +167,7 @@ export class CSVExportService {
   /**
    * Exporta todos os itens encontrados com timestamp de scan.
    */
+
   static async exportFound(
     report: InventoryReport,
     schema?: InventorySchema
@@ -113,32 +177,23 @@ export class CSVExportService {
         throw new Error('Não há itens encontrados para exportar.');
       }
 
-      const customFields = getCustomFieldNames(schema);
+      const { columns, getRow } = resolveColumns(report.foundItems, schema);
 
-      const header = csvRow([
-        'Código',
-        'Descrição',
-        'Localização',
-        'Status',
-        'Valor',
-        ...customFields,
-        'Data do Scan',
-        'Hora do Scan',
-      ]);
+      // Colunas de data/hora são incluídas apenas se houver pelo menos um item escaneado com scanDate
+      const hasScanDate = report.foundItems.some((item) => isScannedItem(item) && item.scanDate);
+      const headerColumns = hasScanDate ? [...columns, 'Data do Scan', 'Hora do Scan'] : columns;
+      const header = csvRow(headerColumns);
 
       const rows = report.foundItems.map((item) => {
         const scanDateObj = isScannedItem(item) ? new Date(item.scanDate) : null;
-        const customValues = customFields.map((field) => item.customFields?.[field] || '');
-        return csvRow([
-          item.code,
-          item.description,
-          item.location,
-          item.status,
-          item.value,
-          ...customValues,
-          scanDateObj ? formatDisplayDate(scanDateObj) : '',
-          scanDateObj ? formatDisplayTime(scanDateObj) : '',
-        ]);
+        const row = getRow(item, scanDateObj);
+        if (hasScanDate) {
+          row.push(
+            scanDateObj ? formatDisplayDate(scanDateObj) : '',
+            scanDateObj ? formatDisplayTime(scanDateObj) : ''
+          );
+        }
+        return csvRow(row);
       });
 
       const safeName = sanitizeFileName(report.inventoryName);
@@ -149,6 +204,7 @@ export class CSVExportService {
   /**
    * Exporta itens NÃO encontrados (pendentes ao final do inventário).
    */
+  
   static async exportPending(
     report: InventoryReport,
     schema?: InventorySchema
@@ -158,28 +214,10 @@ export class CSVExportService {
         throw new Error('Não há itens pendentes para exportar.');
       }
 
-      const customFields = getCustomFieldNames(schema);
+      const { columns, getRow } = resolveColumns(report.notFoundItems, schema);
 
-      const header = csvRow([
-        'Código',
-        'Descrição',
-        'Localização',
-        'Status',
-        'Valor',
-        ...customFields,
-      ]);
-
-      const rows = report.notFoundItems.map((item) => {
-        const customValues = customFields.map((field) => item.customFields?.[field] || '');
-        return csvRow([
-          item.code,
-          item.description,
-          item.location,
-          item.status,
-          item.value,
-          ...customValues,
-        ]);
-      });
+      const header = csvRow(columns);
+      const rows = report.notFoundItems.map((item) => csvRow(getRow(item)));
 
       const safeName = sanitizeFileName(report.inventoryName);
       await writeAndShare(`${safeName}_nao_encontrados.csv`, [header, ...rows].join('\r\n'));
@@ -189,50 +227,45 @@ export class CSVExportService {
   /**
    * Exporta relatório completo: todos os itens + coluna de situação.
    */
+
   static async exportFull(
     report: InventoryReport,
     schema?: InventorySchema
   ): Promise<Result<void>> {
     return handleServiceError(async () => {
-      if (!report.foundItems.length && !report.notFoundItems.length) {
-        throw new Error('Não há itens para exportar.');
-      }
-
-      const customFields = getCustomFieldNames(schema);
-
-      const header = csvRow([
-        'Código',
-        'Descrição',
-        'Localização',
-        'Status Original',
-        'Valor',
-        'Situação',
-        ...customFields,
-        'Data do Scan',
-        'Hora do Scan',
-      ]);
-
-      // Combina e ordena todos os itens
       const allItems = [...report.foundItems, ...report.notFoundItems].sort((a, b) =>
         a.code.localeCompare(b.code)
       );
 
+      if (!allItems.length) {
+        throw new Error('Não há itens para exportar.');
+      }
+
+      const { columns, getRow } = resolveColumns(allItems, schema);
+
+      // Coluna "Situação" sempre presente
+      const hasScanDate = allItems.some(
+        (item) => item.found && isScannedItem(item) && item.scanDate
+      );
+      const headerColumns = [
+        ...columns,
+        'Situação',
+        ...(hasScanDate ? ['Data do Scan', 'Hora do Scan'] : []),
+      ];
+      const header = csvRow(headerColumns);
+
       const rows = allItems.map((item) => {
         const isFound = item.found === true;
         const scanDateObj = isFound && isScannedItem(item) ? new Date(item.scanDate) : null;
-        const customValues = customFields.map((field) => item.customFields?.[field] || '');
-
-        return csvRow([
-          item.code,
-          item.description,
-          item.location,
-          item.status,
-          item.value,
-          isFound ? 'Encontrado' : 'Pendente',
-          ...customValues,
-          scanDateObj ? formatDisplayDate(scanDateObj) : '',
-          scanDateObj ? formatDisplayTime(scanDateObj) : '',
-        ]);
+        const row = getRow(item, scanDateObj);
+        row.push(isFound ? 'Encontrado' : 'Pendente');
+        if (hasScanDate) {
+          row.push(
+            scanDateObj ? formatDisplayDate(scanDateObj) : '',
+            scanDateObj ? formatDisplayTime(scanDateObj) : ''
+          );
+        }
+        return csvRow(row);
       });
 
       const safeName = sanitizeFileName(report.inventoryName);

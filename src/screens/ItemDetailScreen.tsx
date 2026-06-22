@@ -12,19 +12,12 @@ import {
 } from 'react-native';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles, itemDetailStyles } from '../styles/theme';
-import { AssetItem, AssetStatus, RootStackParamList, isScannedItem } from '../types/types';
+import { AssetItem, RootStackParamList, isScannedItem } from '../types/types';
 import { formatBrazilianCurrency } from '../utils/currencyUtils';
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 
 type ItemDetailRouteProp = RouteProp<RootStackParamList, 'ItemDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
-
-const STATUS_LABELS: Record<AssetStatus, string> = {
-  good: 'Bom estado',
-  damaged: 'Danificado',
-  missing: 'Extraviado',
-  in_repair: 'Em manutenção',
-};
 
 export const ItemDetailScreen = () => {
   const navigation = useNavigation<NavProp>();
@@ -111,7 +104,7 @@ export const ItemDetailScreen = () => {
             </View>
           ) : (
             <View style={itemDetailStyles.statusBadgePending}>
-              <Ionicons name="time-outline" size={24} color={colors.accentWarn} />
+              <Ionicons name="time-outline" size={24} color={colors.warning} />
               <Text style={itemDetailStyles.statusTextPending}>Pendente</Text>
             </View>
           )}
@@ -133,11 +126,6 @@ export const ItemDetailScreen = () => {
         <View style={itemDetailStyles.card}>
           <DetailField icon="cube-outline" label="Descrição" value={item.description} />
           <DetailField icon="location-outline" label="Localização" value={item.location} />
-          <DetailField
-            icon="information-circle-outline"
-            label="Status"
-            value={STATUS_LABELS[item.status] || item.status}
-          />
           {item.value !== undefined && item.value !== null && (
             <DetailField
               icon="cash-outline"

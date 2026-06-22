@@ -8,22 +8,21 @@ export type AssetCode = string;
 
 // Mantém autocomplete para os fixos e permite strings customizadas
 
-export type KnownFields = 'code' | 'description' | 'location' | 'status' | 'value';
+export type KnownFields = 'code' | 'description' | 'location'  | 'value';
 
 export type MappableField = KnownFields | (string & {});
 
 // Type Guard: Retorna true e ensina ao compilador que a string pertence aos campos nativos
 export const isStandardField = (field: string): field is KnownFields => {
-  return ['code', 'description', 'location', 'status', 'value'].includes(field);
+  return ['code', 'description', 'location', 'value'].includes(field);
 };
 
-export type AssetStatus = 'good' | 'damaged' | 'missing' | 'in_repair';
+
 
 export interface AssetItemBase {
   code: AssetCode;
   description: string;
-  location: string;
-  status: AssetStatus;
+  location?: string;
   value?: number;
   importDate?: ISODateString;
   /**
@@ -40,6 +39,8 @@ export type AssetItem =
 export interface InventoryMetadata {
   id: InventoryId;
   name: string;
+  location?: string;
+  year?: number;
   importDate: ISODateString;
   totalItems: number;
   status: 'active' | 'completed' | 'archived';
@@ -48,12 +49,22 @@ export interface InventoryMetadata {
   tags?: string[];
 }
 
+export interface UnexpectedItem {
+  code: string;
+  scannedAt: string; // ISO 8601
+  description?: string;
+  location?: string;
+}
+
 export interface Inventory {
   metadata: InventoryMetadata;
   items: AssetItem[];
+  unexpectedItems: UnexpectedItem[];
   schema: InventorySchema;
   stats?: InventoryStats;
 }
+
+export type ScannedAssetItem = AssetItem & { found: true; scanDate: string };
 
 // --- SCANNER ------
 export interface ScanResult {
@@ -243,6 +254,7 @@ export type AppErrorCode =
   | 'SCAN_CONFIRM_FAILED'
   // Exportação
   | 'EXPORT_WRITE_FAILED'
+  | 'UNEXPECTED_ITEM_REGISTER_FAILED'
   | 'EXPORT_SHARE_UNAVAILABLE'
   // Genérico
   | 'UNKNOWN';

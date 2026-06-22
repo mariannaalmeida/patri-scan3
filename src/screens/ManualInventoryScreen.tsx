@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { StorageService } from '../services/StorageService';
 import { colors, localStyles, manualInventoryStyles } from '../styles/theme';
-import { AssetItem, AssetStatus, Inventory, RootStackParamList } from '../types/types';
+import { AssetItem, Inventory, RootStackParamList } from '../types/types';
 import { parseBrazilianCurrencySafe } from '../utils/currencyUtils';
 import { toISODate } from '../utils/dateUtils';
 import { generateBasicSchema } from '../utils/schemaUtils';
@@ -43,26 +43,17 @@ interface ManualItem {
   code: string;
   description: string;
   location: string;
-  status: AssetStatus;
   value: string;
   customFields: Record<string, string>;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS: { label: string; value: AssetStatus }[] = [
-  { label: 'Bom', value: 'good' },
-  { label: 'Danificado', value: 'damaged' },
-  { label: 'Extraviado', value: 'missing' },
-  { label: 'Em Manutenção', value: 'in_repair' },
-];
-
 const createEmptyItem = (): ManualItem => ({
   id: Date.now().toString() + Math.random().toString(36).slice(2),
   code: '',
   description: '',
   location: '',
-  status: 'good',
   value: '',
   customFields: {},
 });
@@ -78,6 +69,7 @@ export const ManualInventoryScreen = () => {
   const [newFieldName, setNewFieldName] = useState('');
   const [items, setItems] = useState<ManualItem[]>([createEmptyItem()]);
   const [isLoading, setIsLoading] = useState(false);
+  const [inventoryLocation, setInventoryLocation] = useState('');
 
   // ─── Navegação ──────────────────────────────────────────────────────────────
 
@@ -158,10 +150,10 @@ export const ManualInventoryScreen = () => {
     setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const updateItem = (
+  const updateItem = <K extends keyof Omit<ManualItem, 'customFields' | 'id'>>(
     id: string,
-    field: keyof Omit<ManualItem, 'customFields' | 'id'>,
-    value: string
+    field: K,
+    value: ManualItem[K]
   ) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   };
@@ -209,8 +201,7 @@ export const ManualInventoryScreen = () => {
       const assetItems: AssetItem[] = items.map((item) => ({
         code: item.code.trim(),
         description: item.description.trim(),
-        location: item.location.trim(),
-        status: item.status,
+        location: item.location.trim() || undefined,
         value: parseBrazilianCurrencySafe(item.value),
         customFields: Object.keys(item.customFields).length > 0 ? item.customFields : undefined,
         found: false,
@@ -228,9 +219,11 @@ export const ManualInventoryScreen = () => {
 
       const inventory: Inventory = {
         items: assetItems,
+        unexpectedItems: [],
         metadata: {
           id,
           name: inventoryName.trim(),
+          location: inventoryLocation.trim() || undefined,
           importDate: now,
           totalItems: assetItems.length,
           status: 'active',
@@ -301,6 +294,15 @@ export const ManualInventoryScreen = () => {
             placeholder="Ex: Patrimônio 2026"
             placeholderTextColor={colors.textDim}
           />
+          {/* Local do Inventário */}
+          <Text style={styles.label}>Localização do Inventário</Text>
+          <TextInput
+            style={styles.input}
+            value={inventoryLocation}
+            onChangeText={setInventoryLocation}
+            placeholder="Ex: Sala 101, Prédio A"
+            placeholderTextColor={colors.textDim}
+          />
         </View>
 
         {/* ── Campos Extras ─────────────────────────────── */}
@@ -317,7 +319,7 @@ export const ManualInventoryScreen = () => {
                 onPress={() => removeSchemaField(field.id, field.name)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="close" size={18} color={colors.accentWarn} />
+                <Ionicons name="close" size={18} color={colors.warning} />
               </TouchableOpacity>
             </View>
           ))}
@@ -393,30 +395,6 @@ export const ManualInventoryScreen = () => {
               </View>
 
               <View style={styles.row}>
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>Status</Text>
-                  <View style={localStyles.statusRow}>
-                    {STATUS_OPTIONS.map((opt) => (
-                      <TouchableOpacity
-                        key={opt.value}
-                        style={[
-                          localStyles.statusChip,
-                          item.status === opt.value && localStyles.statusChipActive,
-                        ]}
-                        onPress={() => updateItem(item.id, 'status', opt.value)}
-                      >
-                        <Text
-                          style={[
-                            localStyles.statusChipText,
-                            item.status === opt.value && localStyles.statusChipTextActive,
-                          ]}
-                        >
-                          {opt.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
                 <View style={styles.halfField}>
                   <Text style={styles.fieldLabel}>Valor (R$)</Text>
                   <TextInput

@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles, homeStyles } from '../styles/theme';
-import { AssetItem, AssetStatus, Inventory, RootStackParamList } from '../types/types';
+import { AssetItem, Inventory, RootStackParamList } from '../types/types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -36,19 +36,10 @@ type FlatAsset = AssetItem & {
 };
 
 interface ActiveFilters {
-  tipo: string;
   local: string;
 }
 
 const PAGE_SIZE = 20;
-
-// Mapa de rótulos legíveis para os valores internos de AssetStatus.
-const STATUS_LABELS: Record<AssetStatus, string> = {
-  good: 'Bom estado',
-  damaged: 'Danificado',
-  missing: 'Extraviado',
-  in_repair: 'Em manutenção',
-};
 
 export const HomeScreen = () => {
   const navigation = useNavigation<NavProp>();
@@ -64,8 +55,8 @@ export const HomeScreen = () => {
   const [searchRaw, setSearchRaw] = useState('');
   const [search, setSearch] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [filters, setFilters] = useState<ActiveFilters>({ tipo: '', local: '' });
-  const [pendingFilters, setPendingFilters] = useState<ActiveFilters>({ tipo: '', local: '' });
+  const [filters, setFilters] = useState<ActiveFilters>({ local: '' });
+  const [pendingFilters, setPendingFilters] = useState<ActiveFilters>({ local: '' });
 
   // Ref para manter o valor mais recente de page sem incluí-lo nas dependências
   const pageRef = useRef(page);
@@ -143,18 +134,11 @@ export const HomeScreen = () => {
   }, [loadInventories, buildFlatAssets]);
 
   const availableLocals = useMemo(
-    () => [...new Set(allAssets.map((a) => a.location).filter(Boolean))].sort(),
+    () => [...new Set(allAssets.map((a) => a.location).filter((l): l is string => !!l))].sort(),
     [allAssets]
   );
 
   // availableTipos retorna objetos { value, label } para exibir rótulos legíveis na UI
-  const availableTipos = useMemo(
-    () =>
-      [...new Set(allAssets.map((a) => a.status).filter((s): s is AssetStatus => Boolean(s)))]
-        .sort()
-        .map((value) => ({ value, label: STATUS_LABELS[value] ?? value })),
-    [allAssets]
-  );
 
   const filteredAssets = useMemo(() => {
     let list = allAssets;
@@ -167,7 +151,6 @@ export const HomeScreen = () => {
           a.location?.toLowerCase().includes(q)
       );
     }
-    if (filters.tipo) list = list.filter((a) => a.status === filters.tipo);
     if (filters.local) list = list.filter((a) => a.location === filters.local);
     return list;
   }, [allAssets, search, filters]);
@@ -271,13 +254,13 @@ export const HomeScreen = () => {
   }, [pendingFilters]);
 
   const clearFilters = useCallback(() => {
-    const empty: ActiveFilters = { tipo: '', local: '' };
+    const empty: ActiveFilters = { local: '' };
     setFilters(empty);
     setPendingFilters(empty);
     setIsFilterOpen(false);
   }, []);
 
-  const hasActiveFilters = filters.tipo !== '' || filters.local !== '';
+  const hasActiveFilters = filters.local !== '';
 
   if (isLoading) {
     return (
@@ -360,13 +343,6 @@ export const HomeScreen = () => {
       {/* Chips de filtro ativos */}
       {hasActiveFilters && (
         <View style={homeStyles.activeFiltersRow}>
-          {filters.tipo && (
-            <View style={homeStyles.chip}>
-              <Text style={homeStyles.chipText}>
-                Tipo: {STATUS_LABELS[filters.tipo as AssetStatus] ?? filters.tipo}
-              </Text>
-            </View>
-          )}
           {filters.local && (
             <View style={homeStyles.chip}>
               <Text style={homeStyles.chipText}>Local: {filters.local}</Text>
@@ -485,7 +461,6 @@ export const HomeScreen = () => {
       <FilterModal
         visible={isFilterOpen}
         filters={pendingFilters}
-        availableTipos={availableTipos}
         availableLocals={availableLocals}
         onChange={setPendingFilters}
         onApply={applyFilters}
@@ -536,7 +511,7 @@ const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
             <Ionicons name="location-outline" size={11} /> {asset.location}
           </Text>
         )}
-        
+
         <Text style={homeStyles.itemMetaInv}>
           <Ionicons name="folder-outline" size={11} /> {asset.inventoryName}
         </Text>
@@ -550,7 +525,6 @@ const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
 interface FilterModalProps {
   visible: boolean;
   filters: ActiveFilters;
-  availableTipos: { value: string; label: string }[];
   availableLocals: string[];
   onChange: (f: ActiveFilters) => void;
   onApply: () => void;
@@ -562,7 +536,6 @@ const FilterModal = React.memo(
   ({
     visible,
     filters,
-    availableTipos,
     availableLocals,
     onChange,
     onApply,
@@ -582,50 +555,6 @@ const FilterModal = React.memo(
         <Text style={homeStyles.modalTitle}>Filtros</Text>
 
         <ScrollView showsVerticalScrollIndicator={false}>
-          <Text style={homeStyles.filterGroupLabel}>Tipo / Status</Text>
-          <View style={homeStyles.filterOptions}>
-            <TouchableOpacity
-              key="__all_tipo"
-              style={[
-                homeStyles.filterOption,
-                filters.tipo === '' && homeStyles.filterOptionActive,
-              ]}
-              onPress={() => onChange({ ...filters, tipo: '' })}
-              accessibilityRole="button"
-              accessibilityLabel="Todos os tipos"
-            >
-              <Text
-                style={[
-                  homeStyles.filterOptionText,
-                  filters.tipo === '' && homeStyles.filterOptionTextActive,
-                ]}
-              >
-                Todos
-              </Text>
-            </TouchableOpacity>
-            {availableTipos.map(({ value, label }) => (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  homeStyles.filterOption,
-                  filters.tipo === value && homeStyles.filterOptionActive,
-                ]}
-                onPress={() => onChange({ ...filters, tipo: value })}
-                accessibilityRole="button"
-                accessibilityLabel={label}
-              >
-                <Text
-                  style={[
-                    homeStyles.filterOptionText,
-                    filters.tipo === value && homeStyles.filterOptionTextActive,
-                  ]}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
           <Text style={homeStyles.filterGroupLabel}>Local / Sala</Text>
           <View style={homeStyles.filterOptions}>
             {['', ...availableLocals].map((val) => (

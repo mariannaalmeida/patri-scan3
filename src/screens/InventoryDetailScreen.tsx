@@ -17,7 +17,7 @@ import { ScannerService } from '../services/ScannerService';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles, inventoryDetailStyles } from '../styles/theme';
 import { AssetItem, Inventory, RootStackParamList, isScannedItem } from '../types/types';
-import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
+import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateUtils';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'InventoryDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -250,7 +250,7 @@ export const InventoryDetailScreen = () => {
 
           {/* Botão de Reset */}
           <TouchableOpacity onPress={handleResetInventory} style={inventoryDetailStyles.resetBtn}>
-            <Ionicons name="refresh-outline" size={20} color={colors.accentWarn} />
+            <Ionicons name="refresh-outline" size={20} color={colors.warning} />
           </TouchableOpacity>
 
           {/* Botão de Lixeira */}
@@ -258,10 +258,10 @@ export const InventoryDetailScreen = () => {
             onPress={handleDeleteInventory}
             style={[
               inventoryDetailStyles.resetBtn,
-              { borderColor: colors.accentWarn, backgroundColor: colors.accentWarn + '20' },
+              { borderColor: colors.warning, backgroundColor: colors.warning + '20' },
             ]}
           >
-            <Ionicons name="trash-outline" size={20} color={colors.accentWarn} />
+            <Ionicons name="trash-outline" size={20} color={colors.warning} />
           </TouchableOpacity>
         </View>
       </View>
@@ -459,7 +459,7 @@ interface ItemRowProps {
 
 const ItemRow = React.memo(({ item }: ItemRowProps) => {
   const scanned = isScannedItem(item);
-  const scanTime = scanned ? formatDisplayTime(item.scanDate) : null;
+  const scanTime = scanned ? formatDisplayDateTime(item.scanDate) : null;
   const customFieldsEntries = item.customFields ? Object.entries(item.customFields) : [];
 
   return (

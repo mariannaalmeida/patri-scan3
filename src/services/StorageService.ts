@@ -9,6 +9,7 @@ import {
   InventoryStats,
   isScannedItem,
   Result,
+  UnexpectedItem,
 } from '../types/types';
 import { toISODate } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
@@ -164,6 +165,7 @@ export class StorageService {
       const itemsFile = new File(dir, 'items.json');
       const metadataFile = new File(dir, 'metadata.json');
       const schemaFile = new File(dir, 'schema.json');
+      const unexpectedFile = new File(dir, 'unexpected.json');
 
       //  Usa toISODate para garantir o tipo ISODateString
       const metadataWithTimestamp = {
@@ -175,6 +177,7 @@ export class StorageService {
         itemsFile.write(JSON.stringify(inventory.items, null, 2)),
         metadataFile.write(JSON.stringify(metadataWithTimestamp, null, 2)),
         schemaFile.write(JSON.stringify(inventory.schema, null, 2)),
+        unexpectedFile.write(JSON.stringify(inventory.unexpectedItems ?? [], null, 2)),
       ]);
 
       const listResult = await this.getInventories();
@@ -200,18 +203,20 @@ export class StorageService {
         const itemsFile = new File(dir, 'items.json');
         const metadataFile = new File(dir, 'metadata.json');
         const schemaFile = new File(dir, 'schema.json');
+        const unexpectedFile = new File(dir, 'unexpected.json');
 
         if (!itemsFile.exists || !metadataFile.exists) {
           throw new Error(`Arquivos do inventário (ID: ${id}) não encontrados.`);
         }
 
         //  Lê o schema se existir, senão retorna um JSON de fallback vazio
-        const [itemsRaw, metadataRaw, schemaRaw] = await Promise.all([
+        const [itemsRaw, metadataRaw, schemaRaw, unexpectedRaw] = await Promise.all([
           itemsFile.text(),
           metadataFile.text(),
           schemaFile.exists
             ? schemaFile.text()
             : Promise.resolve(JSON.stringify(this.DEFAULT_SCHEMA)),
+          unexpectedFile.exists ? unexpectedFile.text() : Promise.resolve('[]'),
         ]);
 
         const items = this.safeJSONParse<AssetItem[]>(itemsRaw, []);
@@ -221,8 +226,8 @@ export class StorageService {
         );
         //  Faz o parse do schema de forma segura
         const schema = this.safeJSONParse<InventorySchema>(schemaRaw, this.DEFAULT_SCHEMA);
-
-        return { items, metadata, schema };
+        const unexpectedItems = this.safeJSONParse<UnexpectedItem[]>(unexpectedRaw, []);
+        return { items, metadata, schema, unexpectedItems };
       },
       'STORAGE_READ_FAILED',
       { inventoryId: id }
@@ -276,15 +281,16 @@ export class StorageService {
     itemCode: string,
     found: boolean,
     scanDate?: Date | string
-  ): Promise<Result<void>> {
+  ): Promise<Result<{ updatedItem: AssetItem }>> {
+    // ← MUDOU O RETORNO
     return handleServiceError(
       async () => {
         const loadResult = await this.loadInventory(inventoryId);
         if (!loadResult.ok) throw loadResult.error;
 
         const inventory = loadResult.value;
-
         const index = inventory.items.findIndex((i) => i.code === itemCode);
+
         if (index === -1) {
           throw new Error(`Item com código "${itemCode}" não encontrado`);
         }
@@ -316,6 +322,8 @@ export class StorageService {
 
         const saveResult = await this.saveInventory(inventory);
         if (!saveResult.ok) throw saveResult.error;
+
+        return { updatedItem };
       },
       'STORAGE_WRITE_FAILED',
       { inventoryId, itemCode }
@@ -369,6 +377,7 @@ export class StorageService {
         },
         //  Adicionado o schema padrão para satisfazer a interface Inventory
         schema: generateBasicSchema(items),
+        unexpectedItems: [],
       };
 
       const saveResult = await this.saveInventory(newInventory);
@@ -475,7 +484,9 @@ export class StorageService {
         idsResult.value.map((id) => this.deleteInventory(id))
       );
 
-      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      // Pega os resultados que foram resolvidos, mas que o 'ok' retornou false do seu Result<T>
+      const failures = results.filter((r) => r.status === 'fulfilled' && r.value.ok === false);
+
       if (failures.length > 0) {
         console.warn('Alguns inventários não puderam ser resolvidos: ', failures.length);
       }

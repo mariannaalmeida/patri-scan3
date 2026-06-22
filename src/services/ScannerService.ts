@@ -1,5 +1,5 @@
 // ScannerService.ts
-import { AssetItem, Inventory, Result, ScanResult } from '../types/types';
+import { AssetItem, Inventory, Result, ScanResult, UnexpectedItem } from '../types/types';
 import { toISODate } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
 import { StorageService } from './StorageService';
@@ -51,28 +51,23 @@ export class ScannerService {
    */
 
   static async confirmScan(
-    inventoryId: string, // Renomeado de "inventoryName" para "inventoryId"
+    inventoryId: string,
     item: AssetItem,
     scanDate?: Date | string
-  ): Promise<Result<{ updatedInventory: Inventory; result: ScanResult }>> {
+  ): Promise<Result<{ updatedItem: AssetItem; result: ScanResult }>> {
     return handleServiceError(async () => {
-      //  Garante que estamos lidando com um ID real
       if (!StorageService.isValidInventoryId(inventoryId)) {
         throw new Error(`ID de inventário inválido ou ausente: "${inventoryId}"`);
       }
 
+      // Fluxo A: O item já foi escaneado anteriormente (Caso de aviso/duplicidade)
       if (item.found) {
+        // Para itens já escaneados, ainda precisamos recarregar para pegar dados frescos
         const loadResult = await StorageService.loadInventory(inventoryId);
-        if (!loadResult.ok) {
-          throw new Error(loadResult.error.message);
-        }
+        if (!loadResult.ok) throw new Error(loadResult.error.message);
 
-        const updatedInventory = loadResult.value;
-        const updatedItem = updatedInventory.items.find((i) => i.code === item.code);
-
-        if (!updatedItem) {
-          throw new Error('Item não encontrado após recarregar inventário');
-        }
+        const updatedItem = loadResult.value.items.find((i) => i.code === item.code);
+        if (!updatedItem) throw new Error('Item não encontrado após recarregar inventário');
 
         const result: ScanResult = {
           type: 'warning',
@@ -81,11 +76,13 @@ export class ScannerService {
           code: item.code,
           timestamp: toISODate(new Date()),
         };
-        return { updatedInventory, result };
+        return { updatedItem, result };
       }
 
+      // Fluxo B: NOVO FLUXO OTIMIZADO (Primeiro scan do item)
+      // NOVO FLUXO OTIMIZADO
       const updateResult = await StorageService.updateItemFoundStatus(
-        inventoryId, // passa o ID
+        inventoryId,
         item.code,
         true,
         scanDate
@@ -95,17 +92,7 @@ export class ScannerService {
         throw new Error(updateResult.error.message);
       }
 
-      const loadResult = await StorageService.loadInventory(inventoryId);
-      if (!loadResult.ok) {
-        throw new Error(loadResult.error.message);
-      }
-
-      const updatedInventory = loadResult.value;
-      const updatedItem = updatedInventory.items.find((i) => i.code === item.code);
-
-      if (!updatedItem) {
-        throw new Error('Item não encontrado após atualização');
-      }
+      const updatedItem = updateResult.value.updatedItem; // Captura direta sem re-leitura do disco
 
       const result: ScanResult = {
         type: 'success',
@@ -114,10 +101,10 @@ export class ScannerService {
         code: item.code,
         timestamp: toISODate(new Date()),
       };
-      return { updatedInventory, result };
+
+      return { updatedItem, result };
     }, 'SCAN_CONFIRM_FAILED');
   }
-
   /**
    * Calcula o progresso atual do inventário baseado nos itens com found === true.
    */
@@ -195,5 +182,80 @@ export class ScannerService {
           timestamp,
         };
     }
+  }
+
+  /**
+   * Registra um item escaneado que NÃO pertence à lista original do inventário.
+   * Adiciona à lista de unexpectedItems e persiste.
+   */
+  static async registerUnexpectedItem(
+    inventoryId: string,
+    code: string,
+    description?: string,
+    location?: string
+  ): Promise<Result<Inventory>> {
+    return handleServiceError(async () => {
+      // 1. Valida o ID
+      if (!StorageService.isValidInventoryId(inventoryId)) {
+        throw new Error(`ID de inventário inválido: "${inventoryId}"`);
+      }
+
+      // 2. Valida o código
+      if (!this.validateCode(code)) {
+        throw new Error('Código inválido para registro.');
+      }
+
+      // 3. Carrega o inventário atual
+      const loadResult = await StorageService.loadInventory(inventoryId);
+      if (!loadResult.ok) {
+        throw new Error(loadResult.error.message);
+      }
+
+      const inventory = loadResult.value;
+
+      // 4. Normaliza o código
+      const normalizedCode = this.normalizeCode(code);
+
+      // 5. Verifica se o código já existe nos itens normais
+      const existsInItems = inventory.items.some(
+        (item) => this.normalizeCode(item.code) === normalizedCode
+      );
+
+      if (existsInItems) {
+        throw new Error(
+          `O código "${code}" já existe no inventário. Use o fluxo normal de escaneamento.`
+        );
+      }
+
+      // 6. Verifica se já foi registrado como inesperado (evita duplicatas)
+      const alreadyUnexpected = inventory.unexpectedItems.some(
+        (item) => this.normalizeCode(item.code) === normalizedCode
+      );
+
+      if (alreadyUnexpected) {
+        // Retorna o inventário sem modificar (não lança erro, apenas avisa)
+        return inventory;
+      }
+
+      // 7. Cria o UnexpectedItem
+      const unexpectedItem: UnexpectedItem = {
+        code: normalizedCode,
+        scannedAt: toISODate(new Date()),
+        description: description?.trim() || undefined,
+        location: location?.trim() || undefined,
+      };
+
+      // 8. Adiciona ao inventário
+      inventory.unexpectedItems.push(unexpectedItem);
+
+      // 9. Salva o inventário atualizado
+      const saveResult = await StorageService.saveInventory(inventory);
+      if (!saveResult.ok) {
+        throw new Error(saveResult.error.message);
+      }
+
+      // 10. Retorna o inventário atualizado
+      return inventory;
+    }, 'UNEXPECTED_ITEM_REGISTER_FAILED');
   }
 }

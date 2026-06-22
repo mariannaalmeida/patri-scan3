@@ -6,7 +6,13 @@
  * ReportService, ChartService e as telas de relatório.
  */
 
-import { AssetItem, Inventory, isScannedItem } from '../types/types';
+import {
+  AssetItem,
+  Inventory,
+  isScannedItem,
+  ScannedAssetItem,
+  UnexpectedItem,
+} from '../types/types';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../utils/dateUtils';
 
 // ─── Tipos de saída
@@ -15,6 +21,7 @@ export interface OverallStats {
   total: number;
   found: number;
   pending: number;
+  unexpectedCount: number;
   progressPct: number; // 0-100
   startedAt: string | null; // ISO — primeiro scan da sessão
   completedAt: string | null; // ISO — último scan (se 100%)
@@ -41,10 +48,10 @@ export interface InventoryReport {
   inventoryName: string;
   generatedAt: string; // ISO
   overall: OverallStats;
-  byLocation: GroupStat[];
   scanTimeline: ScanEvent[];
   notFoundItems: AssetItem[];
-  foundItems: AssetItem[];
+  foundItems: ScannedAssetItem[];
+  unexpectedItems: UnexpectedItem[];
 }
 
 // ─── Serviço
@@ -59,18 +66,22 @@ export class AnalyticsService {
     const foundItems = inventory.items.filter(isScannedItem);
     const notFoundItems = inventory.items.filter((item) => !item.found);
 
-    const overall = this.computeOverall(inventory, foundItems);
-    const byLocation = this.computeByGroup(inventory, 'location');
+    const overall = this.computeOverall(
+      inventory,
+      foundItems,
+      inventory.unexpectedItems?.length ?? 0
+    );
     const scanTimeline = this.computeTimeline(foundItems, overall.startedAt);
 
     return {
       inventoryName: inventory.metadata.name,
       generatedAt: new Date().toISOString(),
       overall,
-      byLocation,
+
       scanTimeline,
       notFoundItems,
       foundItems,
+      unexpectedItems: inventory.unexpectedItems ?? [],
     };
   }
 
@@ -78,7 +89,8 @@ export class AnalyticsService {
 
   private static computeOverall(
     inventory: Inventory,
-    foundItems: (AssetItem & { found: true; scanDate: string })[]
+    foundItems: ScannedAssetItem[],
+    unexpectedCount: number
   ): OverallStats {
     const total = inventory.items.length;
     const found = foundItems.length;
@@ -98,7 +110,16 @@ export class AnalyticsService {
         ? Math.round((dates[dates.length - 1] - dates[0]) / 60000)
         : null;
 
-    return { total, found, pending, progressPct, startedAt, completedAt, durationMinutes };
+    return {
+      total,
+      found,
+      pending,
+      unexpectedCount,
+      progressPct,
+      startedAt,
+      completedAt,
+      durationMinutes,
+    };
   }
 
   // Agrupamento por campo

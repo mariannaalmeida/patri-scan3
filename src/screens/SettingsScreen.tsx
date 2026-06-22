@@ -195,7 +195,7 @@ export const SettingsScreen = () => {
           <View style={styles.card}>
             <TouchableOpacity style={styles.dangerRow} onPress={handleClearAllData}>
               <View style={styles.dangerIconBox}>
-                <Ionicons name="trash-outline" size={20} color={colors.accentWarn} />
+                <Ionicons name="trash-outline" size={20} color={colors.warning} />
               </View>
               <View style={styles.dangerTextCol}>
                 <Text style={styles.dangerTitle}>Apagar todos os dados</Text>
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: colors.accentWarn + '20',
+    backgroundColor: colors.warning + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
   dangerTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.accentWarn,
+    color: colors.warning,
     marginBottom: 2,
   },
   dangerDesc: {

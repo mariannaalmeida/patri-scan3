@@ -4,7 +4,6 @@ import Papa from 'papaparse';
 import {
   AssetItem,
   AssetItemBase,
-  AssetStatus,
   ColumnMapping,
   CSVValidationResult,
   Inventory,
@@ -77,12 +76,7 @@ function decodeWindows1252(bytes: Uint8Array): string {
 function decodeCSV(arrayBuffer: ArrayBuffer): string {
   const bytes = new Uint8Array(arrayBuffer);
 
-  if (
-    bytes.length >= 3 &&
-    bytes[0] === 0xef &&
-    bytes[1] === 0xbb &&
-    bytes[2] === 0xbf
-  ) {
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     return new TextDecoder('utf-8').decode(bytes);
   }
 
@@ -179,7 +173,6 @@ export class ImportService {
       code: ['código', 'codigo', 'code', 'patrimônio', 'patrimonio', 'tombo', 'id', 'registro'],
       description: ['descrição', 'descricao', 'description', 'nome', 'item', 'produto', 'bem'],
       location: ['local', 'localização', 'localizacao', 'location', 'sala', 'andar', 'prédio'],
-      status: ['status', 'estado', 'situação', 'situacao', 'condição', 'condicao'],
       value: ['valor', 'value', 'preço', 'preco', 'custo', 'montante'],
     };
 
@@ -313,35 +306,6 @@ export class ImportService {
   }
 
   /**
-   * Converter string de status para AssetStatus válido
-   */
-  private static normalizeStatus(status: string): AssetStatus {
-    const statusMap: Record<string, AssetStatus> = {
-      bom: 'good',
-      good: 'good',
-      ótimo: 'good',
-      otimo: 'good',
-      excelente: 'good',
-      danificado: 'damaged',
-      damaged: 'damaged',
-      'danificado parcial': 'damaged',
-      avariado: 'damaged',
-      extraviado: 'missing',
-      missing: 'missing',
-      perdido: 'missing',
-      desaparecido: 'missing',
-      'em manutenção': 'in_repair',
-      'em manutencao': 'in_repair',
-      in_repair: 'in_repair',
-      reparo: 'in_repair',
-      conserto: 'in_repair',
-    };
-
-    const normalized = status.toLowerCase().trim();
-    return statusMap[normalized] || 'good';
-  }
-
-  /**
    * Converter dados do CSV para AssetItem (com found: false inicialmente)
    */
   static convertToAssetItems(
@@ -352,8 +316,7 @@ export class ImportService {
       const base: AssetItemBase = {
         code: '',
         description: '',
-        location: '',
-        status: 'good',
+        location: undefined,
         value: undefined,
         importDate: undefined,
         customFields: {},
@@ -372,9 +335,6 @@ export class ImportService {
                 }
                 break;
               }
-              case 'status':
-                base.status = this.normalizeStatus(strValue);
-                break;
               default:
                 (base as any)[assetField] = strValue;
                 break;
@@ -396,7 +356,8 @@ export class ImportService {
    */
   static async createInventoryFromCSV(
     name: string,
-    items: AssetItem[]
+    items: AssetItem[],
+    location?: string
   ): Promise<Result<Inventory>> {
     return handleServiceError(async () => {
       const schema = generateBasicSchema(items);
@@ -404,12 +365,14 @@ export class ImportService {
         metadata: {
           id: StorageService.generateInventoryId(),
           name,
+          location: location || undefined,
           importDate: toISODate(new Date()),
           totalItems: items.length,
           status: 'active',
         },
         items,
         schema,
+        unexpectedItems: [],
       };
 
       const saveResult = await StorageService.saveInventory(inventory);

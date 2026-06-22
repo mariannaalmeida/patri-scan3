@@ -21,13 +21,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type Step = 'initial' | 'mapping' | 'validation' | 'processing';
 
 // Campos disponíveis para mapeamento
-const MAPPABLE_FIELDS: MappableField[] = [
-  'code',
-  'description',
-  'location',
-  'status',
-  'value',
-];
+const MAPPABLE_FIELDS: MappableField[] = ['code', 'description', 'location', 'status', 'value'];
 
 // Rótulos dos campos (inclui suporte a campos extras via fallback)
 const FIELD_LABELS: Record<string, string> = {
@@ -367,7 +361,7 @@ export const ImportInventoryScreen = () => {
                 </Text>
               )}
               {validationPreview.warnings.length > 0 && (
-                <Text style={[styles.statsText, { color: colors.accentWarn }]}>
+                <Text style={[styles.statsText, { color: colors.warning }]}>
                   Avisos: {validationPreview.warnings.length}
                 </Text>
               )}

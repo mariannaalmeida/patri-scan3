@@ -17,12 +17,14 @@ export const colors = {
 
   // Fundo e superfícies
   bg: '#0A0A0F',
+  bgLight: '#FFFFFF',
   surface: '#14141C',
   surface2: '#1E1E2A',
-  trasparent: '#0000000d',
+  transparent: '#0000000d',
   // Texto
-  text: '#F0F0F8',
-  textDim: '#6B6B88',
+  text: '#F8F8FA', // Branco com traço quase imperceptível de azul (combina com o bg)
+  textDim: '#8888A0', // Cinza mais legível para legendas
+  textMuted: '#55556A', // *NOVO* - Ótimo para placeholders de inputs e ícones inativos
 
   // Bordas
   border: '#ffffff0A',
@@ -197,8 +199,8 @@ export const scannerStyles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   alert_warning: {
-    backgroundColor: colors.accentWarn + '22',
-    borderLeftColor: colors.accentWarn,
+    backgroundColor: colors.warning + '22',
+    borderLeftColor: colors.warning,
   },
   alert_error: {
     backgroundColor: colors.accentErr + '22',
@@ -849,7 +851,7 @@ export const inventoryDetailStyles = StyleSheet.create({
     color: colors.accent,
   },
   statCardValueWarn: {
-    color: colors.accentWarn,
+    color: colors.warning,
   },
   progressRow: {
     flexDirection: 'row',
@@ -1495,6 +1497,17 @@ export const homeStyles = StyleSheet.create({
 
 // Adicione após  reportDetailStyles
 export const reportDetailStyles = StyleSheet.create({
+  itemRowUnexpected: {
+    backgroundColor: '#FFF3E0', // fundo levemente alaranjado
+  },
+  itemIndUnexpected: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF9800', // laranja para itens inesperados
+    marginRight: 10,
+    marginTop: 4,
+  },
   iconBtn: {
     width: 36,
     height: 36,
@@ -1579,7 +1592,7 @@ export const reportDetailStyles = StyleSheet.create({
     borderColor: '#ffffff10',
   },
   exportBtnPDF: {
-    borderColor: colors.accentWarn + '33',
+    borderColor: colors.warning + '33',
   },
   exportBtnText: {
     fontSize: 12,
@@ -1659,7 +1672,7 @@ export const reportDetailStyles = StyleSheet.create({
     color: colors.accent,
   },
   statValueWarn: {
-    color: colors.accentWarn,
+    color: colors.warning,
   },
   progressSection: {
     marginBottom: 12,
@@ -1779,14 +1792,14 @@ export const reportDetailStyles = StyleSheet.create({
     borderColor: '#ffffff0A',
   },
   itemRowPending: {
-    borderColor: colors.accentWarn + '22',
+    borderColor: colors.warning + '22',
   },
   itemInd: {
     width: 3,
     backgroundColor: '#ffffff10',
   },
   itemIndPending: {
-    backgroundColor: colors.accentWarn,
+    backgroundColor: colors.warning,
   },
   itemBody: {
     flex: 1,
@@ -1853,6 +1866,20 @@ export const reportDetailStyles = StyleSheet.create({
   scanMeta: {
     fontSize: 11,
     color: colors.textDim,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: colors.textDim,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  itemIndScanned: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.success, // verde
+    marginRight: 10,
+    marginTop: 4,
   },
 });
 
@@ -2068,6 +2095,49 @@ export const createInventoryStyles = StyleSheet.create({
 });
 
 export const reportsStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.bg, // ou colors.card
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textDim,
+    marginBottom: 16,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: colors.text,
+    marginLeft: 12,
+  },
+  modalCancel: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: colors.accentErr,
+  },
   backBtn: {
     width: 36,
     height: 36,
@@ -2081,6 +2151,9 @@ export const reportsStyles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     marginHorizontal: 12,
+    justifyContent: 'center', // ← centraliza verticalmente os textos
+    minHeight: 50, // ← garante altura mínima
+    overflow: 'visible',
   },
   iconBtn: {
     width: 36,
@@ -2125,18 +2198,23 @@ export const reportsStyles = StyleSheet.create({
     fontSize: 15,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: Platform.OS === 'ios' ? 56 : 36,
     paddingBottom: 14,
     paddingHorizontal: 20,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: '#ffffff0A',
+    overflow: 'visible', // ← garante que nada seja cortado
+    minHeight: 80, // ← altura mínima para o cabeçalho
   },
   headerTitle: {
     fontSize: 26,
     fontWeight: '800',
     color: colors.text,
-    letterSpacing: -0.5,
+    letterSpacing: 0,
   },
   headerSub: {
     fontSize: 13,
@@ -2258,7 +2336,7 @@ export const reportsStyles = StyleSheet.create({
     color: colors.accent,
   },
   miniStatWarn: {
-    color: colors.accentWarn,
+    color: colors.warning,
   },
   progressTrack: {
     height: 5,
@@ -2615,7 +2693,7 @@ export const localStyles = StyleSheet.create({
     fontSize: 14,
   },
   removeFieldBtn: {
-    color: colors.accentWarn,
+    color: colors.warning,
     fontSize: 16,
     paddingHorizontal: 4,
   },
@@ -2736,7 +2814,7 @@ export const itemDetailStyles = StyleSheet.create({
   statusBadgePending: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.accentWarn + '20',
+    backgroundColor: colors.warning + '20',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -2745,7 +2823,7 @@ export const itemDetailStyles = StyleSheet.create({
   statusTextPending: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.accentWarn,
+    color: colors.warning,
   },
   section: {
     marginBottom: 16,

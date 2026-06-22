@@ -107,14 +107,6 @@ export const ReportDetailScreen = () => {
     [report]
   );
 
-  const localSvg = useMemo(
-    () =>
-      report && report.byLocation.length > 0
-        ? ChartService.buildBarChart(report.byLocation, 300, 140)
-        : '',
-    [report]
-  );
-
   // ─── Navegações ─────────────────────────────────────────────────────────────
   const handleGoBack = () => {
     navigation.goBack();
@@ -136,6 +128,8 @@ export const ReportDetailScreen = () => {
   const handleGoToHome = () => {
     navigation.navigate('Home');
   };
+
+  
 
   // Exportações
   const handleExportCSV = useCallback(() => {
@@ -309,7 +303,7 @@ export const ReportDetailScreen = () => {
               style={[styles.exportBtn, styles.exportBtnPDF]}
               onPress={handleExportPDF}
             >
-              <Text style={[styles.exportBtnText, { color: colors.accentWarn }]}>PDF</Text>
+              <Text style={[styles.exportBtnText, { color: colors.warning }]}>PDF</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -372,6 +366,36 @@ export const ReportDetailScreen = () => {
           )}
         </Section>
 
+        {/* ── Itens encontrados ── */}
+        <Section title={`Itens encontrados (${report.foundItems.length})`}>
+          {report.foundItems.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhum item encontrado ainda.</Text>
+          ) : (
+            report.foundItems.map((item, index) => (
+              <View key={`found-${item.code}-${index}`} style={styles.itemRow}>
+                <View style={[styles.itemInd, styles.itemIndScanned]} />
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemCode}>{item.code}</Text>
+                  {item.description ? (
+                    <Text style={styles.itemDesc}>{item.description}</Text>
+                  ) : null}
+                  <View style={styles.itemMeta}>
+                    {item.location ? (
+                      <Text style={styles.itemMetaTxt}>
+                        <Ionicons name="location-outline" size={12} /> {item.location}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.itemMetaTxt}>
+                      <Ionicons name="time-outline" size={12} />{' '}
+                      {AnalyticsService.formatDateTime(item.scanDate)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </Section>
+
         {/* ── Linha do tempo ── */}
         {hasTimeline && timelineSvg && (
           <Section title={`Linha do tempo (${report.scanTimeline.length} scans)`}>
@@ -386,16 +410,6 @@ export const ReportDetailScreen = () => {
                   por item
                 </Text>
               )}
-          </Section>
-        )}
-
-        {/* ── Por localização ── */}
-        {report.byLocation.length > 0 && localSvg && (
-          <Section title="Por localização">
-            <View style={styles.chartDark}>
-              <SvgXml xml={localSvg} width="100%" height={140} />
-            </View>
-            <GroupTable groups={report.byLocation} />
           </Section>
         )}
 
@@ -429,6 +443,39 @@ export const ReportDetailScreen = () => {
                         <Ionicons name="location-outline" size={12} /> {item.location}
                       </Text>
                     ) : null}
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </Section>
+
+        {/* ── Itens não listados (fora da lista) ── */}
+        <Section title={`Itens não listados (${report.unexpectedItems.length})`}>
+          {report.unexpectedItems.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhum item inesperado registrado.</Text>
+          ) : (
+            report.unexpectedItems.map((item, index) => (
+              <View
+                key={`unexp-${item.code}-${index}`}
+                style={[styles.itemRow, styles.itemRowUnexpected]}
+              >
+                <View style={[styles.itemInd, styles.itemIndUnexpected]} />
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemCode}>{item.code}</Text>
+                  {item.description ? (
+                    <Text style={styles.itemDesc}>{item.description}</Text>
+                  ) : null}
+                  <View style={styles.itemMeta}>
+                    {item.location ? (
+                      <Text style={styles.itemMetaTxt}>
+                        <Ionicons name="location-outline" size={12} /> {item.location}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.itemMetaTxt}>
+                      <Ionicons name="time-outline" size={12} />{' '}
+                      {AnalyticsService.formatDateTime(item.scannedAt)}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -514,7 +561,7 @@ const GroupTable = React.memo(({ groups }: { groups: GroupStat[] }) => (
         <Text
           style={[
             styles.groupCell,
-            { color: g.progressPct === 100 ? colors.accent : colors.accentWarn },
+            { color: g.progressPct === 100 ? colors.accent : colors.warning },
           ]}
         >
           {g.progressPct}%
@@ -531,7 +578,7 @@ const ScanEventRow = React.memo(({ event, index }: { event: ScanEvent; index: nu
       <View style={styles.scanHeader}>
         <Text style={styles.scanCode}>{event.code}</Text>
         <Text style={styles.scanTime}>
-          {AnalyticsService.formatTime(event.scanDate)}
+          {AnalyticsService.formatDateTime(event.scanDate)}
           <Text style={styles.scanDelta}> +{event.minutesFromStart}min</Text>
         </Text>
       </View>

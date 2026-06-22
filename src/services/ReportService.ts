@@ -50,7 +50,7 @@ export class ReportService {
   // ─── Builder HTML ──────────────────────────────────────────────────────────
 
   private static buildHTML(report: InventoryReport): string {
-    const { overall, byLocation, scanTimeline, notFoundItems } = report;
+    const { overall, scanTimeline, notFoundItems } = report;
 
     const pieSvg = ChartService.buildPieChart({
       found: overall.found,
@@ -59,7 +59,6 @@ export class ReportService {
     });
 
     const timelineSvg = ChartService.buildTimelineChart(scanTimeline, 480, 130);
-    const localSvg = ChartService.buildBarChart(byLocation, 480, 150);
 
     const generatedAt = AnalyticsService.formatDateTime(report.generatedAt);
 
@@ -86,7 +85,11 @@ export class ReportService {
     margin-bottom: 14px;
   }
 
-  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+ .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
   .stat-card {
     background: #f7f7fa; border-radius: 10px; padding: 12px 14px;
     border: 1px solid #e8e8f0;
@@ -185,6 +188,10 @@ export class ReportService {
         <div class="stat-value ${overall.pending > 0 ? 'amber' : 'green'}">${overall.pending}</div>
       </div>
     </div>
+          <div class="stat-card">
+        <div class="stat-label">Não listados</div>
+        <div class="stat-value" style="color: #D85A30;">${overall.unexpectedCount}</div>
+      </div>
     <div style="margin-top:14px;">
       <div class="progress-track">
         <div class="progress-fill" style="width:${overall.progressPct}%"></div>
@@ -201,7 +208,36 @@ export class ReportService {
     }
   </div>
 
-
+  <!-- Itens encontrados -->
+  ${
+    report.foundItems.length > 0
+      ? `
+  <div class="section">
+    <div class="section-title">Itens encontrados (${report.foundItems.length})</div>
+    <table>
+      <thead><tr><th>Código</th><th>Descrição</th><th>Localização</th><th>Data/Hora</th></tr></thead>
+      <tbody>
+        ${report.foundItems
+          .map(
+            (item) => `<tr>
+          <td class="code">${escapeHtml(item.code)}</td>
+          <td>${escapeHtml(item.description ?? '—')}</td>
+          <td>${escapeHtml(item.location ?? '—')}</td>
+          <td>${AnalyticsService.formatDateTime(item.scanDate)}</td>
+        </tr>`
+          )
+          .join('')}
+      </tbody>
+    </table>
+  </div>`
+      : `
+  <div class="section">
+    <div class="section-title">Itens encontrados</div>
+    <p style="color:#6B6B88;font-weight:600;font-size:12px;">
+       Nenhum item encontrado ainda.
+    </p>
+  </div>`
+  }
 
   <!-- Linha do tempo -->
   ${
@@ -225,32 +261,6 @@ export class ReportService {
 
 
 
-  <!-- Por localização -->
-  ${
-    byLocation.length > 0
-      ? `
-  <div class="section">
-    <div class="section-title">Progresso por localização</div>
-    <div class="chart-dark">${localSvg}</div>
-    <table class="group-table" style="margin-top:10px;">
-      <thead><tr><th>Localização</th><th>Total</th><th>Encontrados</th><th>Pendentes</th><th>%</th></tr></thead>
-      <tbody>
-        ${byLocation
-          .map(
-            (g) => `<tr>
-          <td>${escapeHtml(g.label)}</td>
-          <td>${g.total}</td>
-          <td>${g.found}</td>
-          <td>${g.pending}</td>
-          <td class="pct">${g.progressPct}%</td>
-        </tr>`
-          )
-          .join('')}
-      </tbody>
-    </table>
-  </div>`
-      : ''
-  }
 
   <!-- Itens não encontrados -->
   ${
@@ -289,7 +299,7 @@ export class ReportService {
   <div class="section">
     <div class="section-title">Histórico de scans</div>
     <table>
-      <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Localização</th><th>Horário</th><th>Min.</th></tr></thead>
+     <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Localização</th><th>Data/Hora</th><th>Min.</th></tr></thead>
       <tbody>
         ${scanTimeline
           .map(
@@ -298,7 +308,7 @@ export class ReportService {
           <td class="code">${escapeHtml(e.code)}</td>
           <td>${escapeHtml(e.description || '—')}</td>
           <td>${escapeHtml(e.location || '—')}</td>
-          <td>${AnalyticsService.formatTime(e.scanDate)}</td>
+          <td>${AnalyticsService.formatDateTime(e.scanDate)}</td>
           <td style="color:#9B9BAA;">+${e.minutesFromStart}min</td>
         </tr>`
           )
