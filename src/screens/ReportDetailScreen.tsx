@@ -5,9 +5,11 @@
  *   - Gráfico de pizza (encontrados vs. pendentes)
  *   - Barra de progresso geral
  *   - Linha do tempo de scans
- *   - Tabela por localização
+ *   - Lista de itens encontrados
  *   - Lista de itens não encontrados
- *   - Histórico de scans com timestamp
+ *   - Itens não listados (fora da lista)
+ *   - Histórico de scans
+ *
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +18,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   ScrollView,
   StatusBar,
   Text,
@@ -24,6 +26,7 @@ import {
   View,
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
+import Toast from 'react-native-toast-message';
 import {
   AnalyticsService,
   GroupStat,
@@ -44,6 +47,18 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 //  Estilos
 const styles = reportDetailStyles;
 
+// Tipagem para o  Modal Customizado
+interface DialogConfig {
+  visible: boolean;
+  title: string;
+  message: string;
+  buttons: {
+    text: string;
+    onPress: () => void;
+    type: 'primary' | 'danger' | 'cancel';
+  }[];
+}
+
 //  Componente principal
 export const ReportDetailScreen = () => {
   const navigation = useNavigation<NavProp>();
@@ -55,16 +70,38 @@ export const ReportDetailScreen = () => {
   const [isExporting, setIsExporting] = useState(false);
   const schemaRef = useRef<InventorySchema | undefined>(undefined);
 
+  // Estado para controlar o Modal de Confirmação/Menu
+  const [dialogConfig, setDialogConfig] = useState<DialogConfig>({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+  });
+
+  const closeDialog = () => setDialogConfig((prev) => ({ ...prev, visible: false }));
+
   //  Carregamento
   const loadReport = useCallback(async () => {
     setIsLoading(true);
     try {
       const result = await StorageService.loadInventory(inventoryId);
-
       if (!result.ok) {
-        Alert.alert('Erro', result.error.message || 'Inventário não encontrado.', [
-          { text: 'Voltar', onPress: () => navigation.goBack() },
-        ]);
+        // Erro crítico: Usa o Dialog para forçar o usuário a voltar
+        setDialogConfig({
+          visible: true,
+          title: 'Erro',
+          message: result.error.message || 'Inventário não encontrado.',
+          buttons: [
+            {
+              text: 'Voltar',
+              type: 'primary',
+              onPress: () => {
+                closeDialog();
+                navigation.goBack();
+              },
+            },
+          ],
+        });
         return;
       }
 
@@ -74,7 +111,7 @@ export const ReportDetailScreen = () => {
       setReport(computedReport);
     } catch (error) {
       console.error('Erro ao carregar relatório:', error);
-      Alert.alert('Erro', 'Não foi possível gerar o relatório.');
+      Toast.show({ type: 'error', text1: 'Erro', text2: 'Não foi possível gerar o relatório.' });
     } finally {
       setIsLoading(false);
     }
@@ -86,7 +123,7 @@ export const ReportDetailScreen = () => {
     }, [loadReport])
   );
 
-  // ─── SVGs dos gráficos (memoizados) ──────────────────────────────────────
+  // SVGs dos gráficos (memoizados)
   const pieSvg = useMemo(
     () =>
       report
@@ -107,7 +144,7 @@ export const ReportDetailScreen = () => {
     [report]
   );
 
-  // ─── Navegações ─────────────────────────────────────────────────────────────
+  //  Navegações
   const handleGoBack = () => {
     navigation.goBack();
   };
@@ -129,98 +166,103 @@ export const ReportDetailScreen = () => {
     navigation.navigate('Home');
   };
 
-  
-
   // Exportações
+
+  // Função ajudante para processar a exportação CSV limpa
+  const executeCSVExport = async (type: 'found' | 'pending' | 'full') => {
+    closeDialog();
+    if (!report) return;
+    setIsExporting(true);
+
+    try {
+      let result;
+      if (type === 'found') {
+        result = await CSVExportService.exportFound(report, schemaRef.current);
+      } else if (type === 'pending') {
+        result = await CSVExportService.exportPending(report, schemaRef.current);
+      } else {
+        result = await CSVExportService.exportFull(report, schemaRef.current);
+      }
+
+      if (!result.ok) {
+        Toast.show({ type: 'error', text1: 'Erro na exportação', text2: result.error.message });
+      } else {
+        Toast.show({ type: 'success', text1: 'Sucesso', text2: 'Arquivo CSV exportado!' });
+      }
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Erro',
+        text2: error instanceof Error ? error.message : 'Erro inesperado',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleExportCSV = useCallback(() => {
     if (!report) return;
-    Alert.alert('Exportar CSV', 'Selecione o tipo de relatório que deseja exportar:', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: ' Encontrados',
-        onPress: async () => {
-          setIsExporting(true);
-          try {
-            const result = await CSVExportService.exportFound(report, schemaRef.current);
-            if (!result.ok) {
-              Alert.alert('Erro', result.error.message);
-            } else {
-              Alert.alert('Sucesso', 'Arquivo exportado com sucesso!');
-            }
-          } catch (error) {
-            Alert.alert('Erro', error instanceof Error ? error.message : 'Erro inesperado');
-          } finally {
-            setIsExporting(false);
-          }
-        },
-      },
-      {
-        text: ' Não encontrados',
-        onPress: async () => {
-          setIsExporting(true);
-          try {
-            const result = await CSVExportService.exportPending(report, schemaRef.current);
-            if (!result.ok) {
-              Alert.alert('Erro', result.error.message);
-            } else {
-              Alert.alert('Sucesso', 'Arquivo exportado com sucesso!');
-            }
-          } catch (error) {
-            Alert.alert('Erro', error instanceof Error ? error.message : 'Erro inesperado');
-          } finally {
-            setIsExporting(false);
-          }
-        },
-      },
-      {
-        text: ' Completo',
-        onPress: async () => {
-          setIsExporting(true);
-          try {
-            const result = await CSVExportService.exportFull(report, schemaRef.current);
-            if (!result.ok) {
-              Alert.alert('Erro', result.error.message);
-            } else {
-              Alert.alert('Sucesso', 'Arquivo exportado com sucesso!');
-            }
-          } catch (error) {
-            Alert.alert('Erro', error instanceof Error ? error.message : 'Erro inesperado');
-          } finally {
-            setIsExporting(false);
-          }
-        },
-      },
-    ]);
+
+    // Abre o Dialog como um Menu de Opções
+    setDialogConfig({
+      visible: true,
+      title: 'Exportar CSV',
+      message: 'Selecione o tipo de relatório que deseja exportar:',
+      buttons: [
+        { text: 'Encontrados', type: 'primary', onPress: () => executeCSVExport('found') },
+        { text: 'Não encontrados', type: 'primary', onPress: () => executeCSVExport('pending') },
+        { text: 'Completo', type: 'primary', onPress: () => executeCSVExport('full') },
+        { text: 'Cancelar', type: 'cancel', onPress: closeDialog },
+      ],
+    });
   }, [report]);
+
   const handleExportPDF = useCallback(() => {
     if (!report) return;
-    Alert.alert('Exportar PDF', 'Deseja exportar o relatório completo em PDF?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Exportar',
-        onPress: async () => {
-          setIsExporting(true);
-          try {
-            // ✅ Captura o result retornado pelo ReportService
-            const result = await ReportService.exportPDF(report);
 
-            // ✅ Verifica se a operação falhou e exibe o erro real
-            if (!result.ok) {
-              Alert.alert('Erro', result.error.message);
-            } else {
-              Alert.alert('Sucesso', 'PDF exportado com sucesso!');
+    setDialogConfig({
+      visible: true,
+      title: 'Exportar PDF',
+      message: 'Deseja exportar o relatório completo em PDF?',
+      buttons: [
+        { text: 'Cancelar', type: 'cancel', onPress: closeDialog },
+        {
+          text: 'Exportar',
+          type: 'primary',
+          onPress: async () => {
+            closeDialog();
+            setIsExporting(true);
+            try {
+              const result = await ReportService.exportPDF(report);
+              if (!result.ok) {
+                Toast.show({
+                  type: 'error',
+                  text1: 'Erro na exportação',
+                  text2: result.error.message,
+                });
+              } else {
+                Toast.show({
+                  type: 'success',
+                  text1: 'Sucesso',
+                  text2: 'PDF exportado com sucesso!',
+                });
+              }
+            } catch (error) {
+              Toast.show({
+                type: 'error',
+                text1: 'Erro',
+                text2: 'Falha inesperada ao exportar PDF',
+              });
+            } finally {
+              setIsExporting(false);
             }
-          } catch (error) {
-            Alert.alert('Erro', 'Falha inesperada ao exportar PDF');
-          } finally {
-            setIsExporting(false);
-          }
+          },
         },
-      },
-    ]);
+      ],
+    });
   }, [report]);
 
-  // ─── Loading ───────────────────────────────────────────────────────────────
+  // Loading
   if (isLoading || !report) {
     return (
       <View style={styles.loadingContainer}>
@@ -235,7 +277,7 @@ export const ReportDetailScreen = () => {
   const isComplete = overall.progressPct === 100;
   const hasTimeline = report.scanTimeline.length > 0;
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  //  Render
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
@@ -595,3 +637,77 @@ const ScanEventRow = React.memo(({ event, index }: { event: ScanEvent; index: nu
     </View>
   </View>
 ));
+
+const CustomDialog = ({ config }: { config: DialogConfig }) => {
+  if (!config.visible) return null;
+
+  return (
+    <Modal visible={config.visible} transparent animationType="fade">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(10, 10, 15, 0.85)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            width: '100%',
+            borderRadius: 16,
+            padding: 24,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 12 }}>
+            {config.title}
+          </Text>
+
+          <Text style={{ fontSize: 16, color: colors.textDim, marginBottom: 24, lineHeight: 22 }}>
+            {config.message}
+          </Text>
+
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 12 }}
+          >
+            {config.buttons.map((btn, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={btn.onPress}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 8,
+                  backgroundColor:
+                    btn.type === 'primary'
+                      ? colors.accent
+                      : btn.type === 'danger'
+                        ? colors.error + '20'
+                        : 'transparent',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: '600',
+                    color:
+                      btn.type === 'primary'
+                        ? '#000'
+                        : btn.type === 'danger'
+                          ? colors.error
+                          : colors.textDim,
+                  }}
+                >
+                  {btn.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};

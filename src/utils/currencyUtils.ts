@@ -99,3 +99,30 @@ export function formatBrazilianCurrency(value: number | null | undefined): strin
 
   return brlFormatter.format(value);
 }
+
+/**
+ * Formata uma string numérica para o formato de moeda brasileiro (R$) enquanto o usuário digita.
+ * Ideal para uso no onChangeText de TextInputs com keyboardType="numeric".
+ * * Exemplos de digitação:
+ * "1"      -> "0,01"
+ * "15"     -> "0,15"
+ * "1500"   -> "15,00"
+ * "150000" -> "1.500,00"
+ * * @param value - String capturada no input
+ * @returns A string formatada com as casas decimais corretas
+ */
+export const formatBrazilianCurrencyInput = (value: string): string => {
+  // Remove tudo que não for número da string atual
+  const numericValue = value.replace(/\D/g, '');
+
+  if (!numericValue) return '';
+
+  // Transforma em número decimal dividindo por 100
+  const amount = parseFloat(numericValue) / 100;
+
+  // Formata devolvendo com os separadores do Brasil (ex: 1.500,00)
+  return amount.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};

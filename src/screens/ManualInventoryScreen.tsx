@@ -12,20 +12,20 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  Modal,
   StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import Toast from 'react-native-toast-message';
+
 import { StorageService } from '../services/StorageService';
 import { colors, localStyles, manualInventoryStyles } from '../styles/theme';
 import { AssetItem, Inventory, RootStackParamList } from '../types/types';
-import { parseBrazilianCurrencySafe } from '../utils/currencyUtils';
+import { formatBrazilianCurrencyInput, parseBrazilianCurrencySafe } from '../utils/currencyUtils';
 import { toISODate } from '../utils/dateUtils';
 import { generateBasicSchema } from '../utils/schemaUtils';
 
@@ -45,6 +45,18 @@ interface ManualItem {
   location: string;
   value: string;
   customFields: Record<string, string>;
+}
+
+// Tipagem - Modal Customizado
+interface DialogConfig {
+  visible: boolean;
+  title: string;
+  message: string;
+  buttons: {
+    text: string;
+    onPress: () => void;
+    type: 'primary' | 'danger' | 'cancel';
+  }[];
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -71,6 +83,16 @@ export const ManualInventoryScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [inventoryLocation, setInventoryLocation] = useState('');
 
+  // Estado para controlar o Modal de Confirmação
+  const [dialogConfig, setDialogConfig] = useState<DialogConfig>({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+  });
+
+  const closeDialog = () => setDialogConfig((prev) => ({ ...prev, visible: false }));
+
   // ─── Navegação ──────────────────────────────────────────────────────────────
 
   const handleGoBack = () => navigation.goBack();
@@ -78,23 +100,27 @@ export const ManualInventoryScreen = () => {
   const handleGoToHome = () => {
     const hasData = inventoryName.trim() !== '' || items.some((item) => item.code.trim() !== '');
     if (hasData) {
-      Alert.alert(
-        'Sair sem salvar?',
-        'Você tem dados não salvos. Se voltar para a Home, perderá o que digitou. Deseja sair?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
+      setDialogConfig({
+        visible: true,
+        title: 'Sair sem salvar?',
+        message:
+          'Você tem dados não salvos. Se voltar para a Home, perderá o que digitou. Deseja sair?',
+        buttons: [
+          { text: 'Cancelar', type: 'cancel', onPress: closeDialog },
           {
             text: 'Sair e Perder Dados',
-            style: 'destructive',
-            onPress: () => navigation.navigate('Home'),
+            type: 'danger',
+            onPress: () => {
+              closeDialog();
+              navigation.navigate('Home');
+            },
           },
-        ]
-      );
+        ],
+      });
     } else {
       navigation.navigate('Home');
     }
   };
-
   // ─── Gerenciamento do Schema ────────────────────────────────────────────────
 
   const addSchemaField = () => {
@@ -103,7 +129,7 @@ export const ManualInventoryScreen = () => {
 
     const isDuplicate = schemaFields.some((f) => f.name.toLowerCase() === trimmed.toLowerCase());
     if (isDuplicate) {
-      Alert.alert('Erro', 'Já existe um campo com este nome.');
+      Toast.show({ type: 'error', text1: 'Atenção', text2: 'Já existe um campo com este nome.' });
       return;
     }
 
@@ -115,14 +141,15 @@ export const ManualInventoryScreen = () => {
   };
 
   const removeSchemaField = (id: string, name: string) => {
-    Alert.alert(
-      'Remover campo',
-      `Tem certeza? Todos os dados preenchidos em "${name}" serão perdidos.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
+    setDialogConfig({
+      visible: true,
+      title: 'Remover campo',
+      message: `Tem certeza? Todos os dados preenchidos em "${name}" serão perdidos.`,
+      buttons: [
+        { text: 'Cancelar', type: 'cancel', onPress: closeDialog },
         {
           text: 'Remover',
-          style: 'destructive',
+          type: 'danger',
           onPress: () => {
             setSchemaFields((prev) => prev.filter((f) => f.id !== id));
             setItems((prev) =>
@@ -132,10 +159,11 @@ export const ManualInventoryScreen = () => {
                 return { ...item, customFields: updatedCustomFields };
               })
             );
+            closeDialog();
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   // ─── Gerenciamento de Itens ──────────────────────────────────────────────────
@@ -144,10 +172,14 @@ export const ManualInventoryScreen = () => {
 
   const removeItem = (id: string) => {
     if (items.length === 1) {
-      Alert.alert('Atenção', 'O inventário precisa ter ao menos um item.');
-      return;
     }
     setItems((prev) => prev.filter((item) => item.id !== id));
+    Toast.show({
+      type: 'error',
+      text1: 'Atenção',
+      text2: 'O inventário precisa ter ao menos um item.',
+    });
+    return;
   };
 
   const updateItem = <K extends keyof Omit<ManualItem, 'customFields' | 'id'>>(
@@ -174,23 +206,28 @@ export const ManualInventoryScreen = () => {
 
   const handleSave = async () => {
     if (!inventoryName.trim()) {
-      Alert.alert('Erro', 'Digite um nome para o inventário.');
+      Toast.show({ type: 'error', text1: 'Erro', text2: 'Digite um nome para o inventário.' });
       return;
     }
 
     const missingCode = items.find((item) => !item.code.trim());
     if (missingCode) {
-      Alert.alert('Erro', 'Todos os itens precisam ter um código preenchido.');
+      Toast.show({
+        type: 'error',
+        text1: 'Erro',
+        text2: 'Todos os itens precisam ter um código preenchido.',
+      });
       return;
     }
 
     const codes = items.map((item) => item.code.trim().toUpperCase());
     const uniqueCodes = new Set(codes);
     if (uniqueCodes.size !== codes.length) {
-      Alert.alert(
-        'Erro',
-        'Existem itens com códigos de patrimônio duplicados. Cada código deve ser único.'
-      );
+      Toast.show({
+        type: 'error',
+        text1: 'Erro',
+        text2: 'Existem códigos de patrimônio duplicados.',
+      });
       return;
     }
 
@@ -201,7 +238,7 @@ export const ManualInventoryScreen = () => {
       const assetItems: AssetItem[] = items.map((item) => ({
         code: item.code.trim(),
         description: item.description.trim(),
-        location: item.location.trim() || undefined,
+        location: item.location.trim() || inventoryLocation.trim() || undefined,
         value: parseBrazilianCurrencySafe(item.value),
         customFields: Object.keys(item.customFields).length > 0 ? item.customFields : undefined,
         found: false,
@@ -209,7 +246,7 @@ export const ManualInventoryScreen = () => {
 
       const id = StorageService.generateInventoryId();
 
-      // CORREÇÃO: Gera o schema incluindo os campos extras definidos pelo usuário,
+      // Gera o schema incluindo os campos extras definidos pelo usuário,
       // mesmo que nenhum item tenha sido preenchido. Isso garante que o schema
       // reflita a estrutura desejada para consultas futuras.
       const schema = generateBasicSchema(
@@ -234,30 +271,42 @@ export const ManualInventoryScreen = () => {
 
       const result = await StorageService.saveInventory(inventory);
       if (result.ok) {
-        Alert.alert(
-          'Sucesso!',
-          `Inventário "${inventoryName}" criado com ${assetItems.length} itens.`,
-          [
+        // Modal de Sucesso com navegação
+        setDialogConfig({
+          visible: true,
+          title: 'Sucesso!',
+          message: `Inventário "${inventoryName}" criado com ${assetItems.length} itens.`,
+          buttons: [
+            {
+              text: 'Ir para Home',
+              type: 'cancel',
+              onPress: () => {
+                closeDialog();
+                navigation.navigate('Home');
+              },
+            },
             {
               text: 'Ver Inventário',
-              onPress: () =>
+              type: 'primary',
+              onPress: () => {
+                closeDialog();
                 navigation.replace('InventoryDetail', {
                   inventoryId: id,
                   inventoryName: inventoryName.trim(),
-                }),
+                });
+              },
             },
-            {
-              text: 'Ir para Home',
-              style: 'cancel',
-              onPress: () => navigation.navigate('Home'),
-            },
-          ]
-        );
+          ],
+        });
       } else {
         throw new Error(result.error?.message ?? 'Erro desconhecido');
       }
     } catch (error) {
-      Alert.alert('Erro', error instanceof Error ? error.message : 'Falha ao criar inventário');
+      Toast.show({
+        type: 'error',
+        text1: 'Erro',
+        text2: error instanceof Error ? error.message : 'Falha ao criar inventário',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -266,10 +315,7 @@ export const ManualInventoryScreen = () => {
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
       {/* Header */}
@@ -283,7 +329,14 @@ export const ManualInventoryScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid={true} // Ativa a mágica no Android também
+        extraScrollHeight={20} // Um espacinho extra acima do teclado
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
         {/* Nome do Inventário */}
         <View style={styles.section}>
           <Text style={styles.label}>Nome do Inventário *</Text>
@@ -400,10 +453,14 @@ export const ManualInventoryScreen = () => {
                   <TextInput
                     style={styles.input}
                     value={item.value}
-                    onChangeText={(v) => updateItem(item.id, 'value', v)}
+                    onChangeText={(v) => {
+                      // Aplica a máscara e salva a string formatada no estado
+                      const maskedValue = formatBrazilianCurrencyInput(v);
+                      updateItem(item.id, 'value', maskedValue);
+                    }}
                     placeholder="Ex: 1.500,00"
                     placeholderTextColor={colors.textDim}
-                    keyboardType="decimal-pad"
+                    keyboardType="numeric" // 'numeric' para forçar apenas números no teclado
                   />
                 </View>
               </View>
@@ -442,7 +499,84 @@ export const ManualInventoryScreen = () => {
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+
+      {/* MODAL DE CONFIRMAÇÃO CUSTOMIZADO */}
+      <CustomDialog config={dialogConfig} />
+    </View>
+  );
+};
+
+// ─── Sub-componente: Custom Dialog ───────────────────────────────────────────
+
+const CustomDialog = ({ config }: { config: DialogConfig }) => {
+  if (!config.visible) return null;
+
+  return (
+    <Modal visible={config.visible} transparent animationType="fade">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(10, 10, 15, 0.85)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            width: '100%',
+            borderRadius: 16,
+            padding: 24,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 12 }}>
+            {config.title}
+          </Text>
+
+          <Text style={{ fontSize: 16, color: colors.textDim, marginBottom: 24, lineHeight: 22 }}>
+            {config.message}
+          </Text>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+            {config.buttons.map((btn, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={btn.onPress}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 8,
+                  backgroundColor:
+                    btn.type === 'primary'
+                      ? colors.accent
+                      : btn.type === 'danger'
+                        ? colors.error + '20'
+                        : 'transparent',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: '600',
+                    color:
+                      btn.type === 'primary'
+                        ? '#000'
+                        : btn.type === 'danger'
+                          ? colors.error
+                          : colors.textDim,
+                  }}
+                >
+                  {btn.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 };
