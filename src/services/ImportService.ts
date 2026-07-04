@@ -4,33 +4,107 @@ import Papa from 'papaparse';
 import {
   AssetItem,
   AssetItemBase,
-  AssetStatus,
   ColumnMapping,
   CSVValidationResult,
   Inventory,
+  isStandardField,
   MappableField,
   Result,
 } from '../types/types';
+import { parseBrazilianCurrencySafe } from '../utils/currencyUtils';
 import { toISODate } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
+import { generateBasicSchema } from '../utils/schemaUtils';
 import { StorageService } from './StorageService';
+
+// Mapa de caracteres exclusivos do Windows-1252 (faixa 0x80 a 0x9F)
+const WIN1252_EXTENSIONS = [
+  '\u20AC',
+  '\u0081',
+  '\u201A',
+  '\u0192',
+  '\u201E',
+  '\u2026',
+  '\u2020',
+  '\u2021',
+  '\u02C6',
+  '\u2030',
+  '\u0160',
+  '\u2039',
+  '\u0152',
+  '\u008D',
+  '\u017D',
+  '\u008F',
+  '\u0090',
+  '\u2018',
+  '\u2019',
+  '\u201C',
+  '\u201D',
+  '\u2022',
+  '\u2013',
+  '\u2014',
+  '\u02DC',
+  '\u2122',
+  '\u0161',
+  '\u203A',
+  '\u0153',
+  '\u009D',
+  '\u017E',
+  '\u0178',
+];
+
+/**
+ * Decodifica Uint8Array  para string usando as regras do Windows-1252.
+ * Decodifica bytes Windows-1252
+ */
+function decodeWindows1252(bytes: Uint8Array): string {
+  const chars = new Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = bytes[i];
+    if (byte >= 0x80 && byte <= 0x9f) {
+      chars[i] = WIN1252_EXTENSIONS[byte - 0x80];
+    } else {
+      chars[i] = String.fromCharCode(byte);
+    }
+  }
+  return chars.join('');
+}
+
+/**
+ * Detecta automaticamente UTF-8 ou Windows-1252
+ */
+function decodeCSV(arrayBuffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(arrayBuffer);
+
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  try {
+    return new TextDecoder('utf-8', {
+      fatal: true,
+    }).decode(bytes);
+  } catch {
+    try {
+      return new TextDecoder('windows-1252').decode(bytes);
+    } catch {
+      return decodeWindows1252(bytes);
+    }
+  }
+}
+/**
+ * Detecta o delimitador do CSV baseado na contagem de caracteres
+ */
+function detectDelimiter(content: string): string {
+  const semicolons = (content.match(/;/g) || []).length;
+  const commas = (content.match(/,/g) || []).length;
+
+  return semicolons > commas ? ';' : ',';
+}
 
 export class ImportService {
   /**
-   * 1. Selecionar o arquivo CSV do dispositivo
-   */
-  static async pickCSVFile(): Promise<Result<DocumentPicker.DocumentPickerResult | null>> {
-    return handleServiceError(async () => {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'],
-        copyToCacheDirectory: true,
-      });
-      return result.canceled ? null : result;
-    }, 'IMPORT_INVALID_FILE');
-  }
-
-  /**
-   * 2. Ler e parsear o conteúdo do CSV
+   * Parsear o conteúdo do CSV a partir da URI do arquivo
    */
   static async parseCSVFile(uri: string): Promise<
     Result<{
@@ -41,22 +115,32 @@ export class ImportService {
   > {
     return handleServiceError(
       async () => {
-        const csvFile = new File(uri);
-        const csvContent = await csvFile.text();
+        // 1. Instancia o arquivo usando a nova API
+        const file = new File(uri);
 
+        // 2. Lê diretamente como ArrayBuffer (padrão Web implementado pelo Expo)
+        // Código com TextDecoder (recomendado)
+        const arrayBuffer = await file.arrayBuffer();
+        const textContent = decodeCSV(arrayBuffer);
+
+        // 3. Detecta o delimitador
+        const delimiter = detectDelimiter(textContent);
+
+        // 6. Parse com PapaParse
         return new Promise((resolve, reject) => {
-          Papa.parse(csvContent, {
+          Papa.parse(textContent, {
             header: true,
+            delimiter,
             skipEmptyLines: true,
-            encoding: 'UTF-8',
+            transformHeader: (header: string) => header.trim(),
             complete: (results) => {
               resolve({
                 headers: results.meta.fields || [],
                 data: results.data as Record<string, string>[],
-                raw: csvContent,
+                raw: textContent,
               });
             },
-            error: (error: { message: string }) => {
+            error: (error: Error) => {
               reject(new Error(`Erro ao parsear CSV: ${error.message}`));
             },
           });
@@ -68,15 +152,27 @@ export class ImportService {
   }
 
   /**
-   * 3. Sugerir mapeamento de colunas baseado em heurística
+   * Selecionar arquivo CSV do dispositivo
+   */
+  static async pickCSVFile(): Promise<Result<DocumentPicker.DocumentPickerResult | null>> {
+    return handleServiceError(async () => {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'],
+        copyToCacheDirectory: true,
+      });
+
+      return result.canceled ? null : result;
+    }, 'IMPORT_INVALID_FILE');
+  }
+
+  /**
+   * Sugerir mapeamento de colunas baseado em heurística
    */
   static suggestColumnMapping(headers: string[]): ColumnMapping[] {
     const fieldKeywords: Partial<Record<MappableField, string[]>> = {
       code: ['código', 'codigo', 'code', 'patrimônio', 'patrimonio', 'tombo', 'id', 'registro'],
       description: ['descrição', 'descricao', 'description', 'nome', 'item', 'produto', 'bem'],
-      department: ['departamento', 'departament', 'setor', 'divisão', 'divisao', 'unidade'],
       location: ['local', 'localização', 'localizacao', 'location', 'sala', 'andar', 'prédio'],
-      status: ['status', 'estado', 'situação', 'situacao', 'condição', 'condicao'],
       value: ['valor', 'value', 'preço', 'preco', 'custo', 'montante'],
     };
 
@@ -118,7 +214,7 @@ export class ImportService {
   }
 
   /**
-   * 4. Validar os dados do CSV contra o mapeamento fornecido
+   * Validar os dados do CSV contra o mapeamento fornecido
    */
   static validateCSVData(
     data: Record<string, string>[],
@@ -152,7 +248,13 @@ export class ImportService {
       });
     }
 
-    const colCode = Object.entries(mapping).find(([_, f]) => f === 'code')![0];
+    const codeEntry = Object.entries(mapping).find(([_, f]) => f === 'code');
+    if (!codeEntry) {
+      // Esse caso já é tratado no início da função, mas por segurança:
+      result.errors.push({ row: 0, field: 'code', message: 'Mapeamento de código inválido.' });
+      return result;
+    }
+    const colCode = codeEntry[0];
     const colDesc = Object.entries(mapping).find(([_, f]) => f === 'description')?.[0];
     const colValue = Object.entries(mapping).find(([_, f]) => f === 'value')?.[0];
 
@@ -175,16 +277,18 @@ export class ImportService {
       if (colDesc) {
         const descVal = row[colDesc]?.toString().trim();
         if (!descVal) {
-          rowErrors.push(`Descrição obrigatória (coluna: ${colDesc})`);
-          isRowValid = false;
+          result.warnings.push({
+            row: rowNum,
+            field: colDesc,
+            message: 'Descrição não informada',
+          });
         }
       }
 
       if (colValue && row[colValue]) {
         const rawValue = row[colValue].toString().trim();
-        const numericStr = rawValue.replace(/\./g, '').replace(',', '.');
-        const numeric = parseFloat(numericStr);
-        if (isNaN(numeric)) {
+        const numeric = parseBrazilianCurrencySafe(rawValue);
+        if (numeric === undefined) {
           result.warnings.push({
             row: rowNum,
             field: colValue,
@@ -208,71 +312,51 @@ export class ImportService {
   }
 
   /**
-   * ✅ Converter string de status para AssetStatus válido
-   */
-  private static normalizeStatus(status: string): AssetStatus {
-    const statusMap: Record<string, AssetStatus> = {
-      bom: 'good',
-      good: 'good',
-      ótimo: 'good',
-      otimo: 'good',
-      excelente: 'good',
-      danificado: 'damaged',
-      damaged: 'damaged',
-      'danificado parcial': 'damaged',
-      avariado: 'damaged',
-      extraviado: 'missing',
-      missing: 'missing',
-      perdido: 'missing',
-      desaparecido: 'missing',
-      'em manutenção': 'in_repair',
-      'em manutencao': 'in_repair',
-      in_repair: 'in_repair',
-      reparo: 'in_repair',
-      conserto: 'in_repair',
-    };
-
-    const normalized = status.toLowerCase().trim();
-    return statusMap[normalized] || 'good'; // ✅ default para 'good'
-  }
-
-  /**
-   * 5. Converter dados do CSV para AssetItem (com found: false inicialmente)
+   * Converter dados do CSV para AssetItem (com found: false inicialmente)
    */
   static convertToAssetItems(
     data: Record<string, string>[],
-    mapping: Record<string, MappableField>
+    mapping: Record<string, MappableField>,
+    inventoryLocation?: string
   ): AssetItem[] {
-    const timestamp = Date.now();
-    return data.map((row, index) => {
+    return data.map((row) => {
       const base: AssetItemBase = {
         code: '',
-        description: '',
-        department: '',
-        location: '',
-        status: 'good', // ✅ Status padrão válido
+        description: undefined,
+        location: undefined,
         value: undefined,
         importDate: undefined,
+        customFields: {},
       };
 
       for (const [csvCol, assetField] of Object.entries(mapping)) {
         const rawValue = row[csvCol];
         if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
           const strValue = rawValue.toString().trim();
-          switch (assetField) {
-            case 'value':
-              const numericStr = strValue.replace(/\./g, '').replace(',', '.');
-              const num = parseFloat(numericStr);
-              if (!isNaN(num)) base.value = num;
-              break;
-            case 'status':
-              base.status = this.normalizeStatus(strValue); // ✅ Normaliza status
-              break;
-            default:
-              // @ts-ignore - atribuição dinâmica segura
-              base[assetField] = strValue;
+          if (isStandardField(assetField)) {
+            switch (assetField) {
+              case 'value': {
+                const parsed = parseBrazilianCurrencySafe(strValue);
+                if (parsed !== undefined) {
+                  base.value = parsed;
+                }
+                break;
+              }
+              default:
+                (base as any)[assetField] = strValue;
+                break;
+            }
+          } else {
+            if (base.customFields) {
+              base.customFields[assetField] = strValue;
+            }
           }
         }
+      }
+
+      // FALLBACK: se não tiver localização, herda a do inventário
+      if (!base.location && inventoryLocation) {
+        base.location = inventoryLocation;
       }
 
       return { ...base, found: false };
@@ -280,22 +364,29 @@ export class ImportService {
   }
 
   /**
-   * 6. Criar inventário a partir dos itens convertidos e salvar no Storage
+   * Criar inventário a partir dos itens convertidos e salvar no Storage
    */
   static async createInventoryFromCSV(
     name: string,
-    items: AssetItem[]
+    items: AssetItem[],
+    location?: string,
+    year?: number
   ): Promise<Result<Inventory>> {
     return handleServiceError(async () => {
+      const schema = generateBasicSchema(items);
       const inventory: Inventory = {
         metadata: {
-          id: StorageService.generateInventoryId(), // ✅ Usar o gerador de ID
+          id: StorageService.generateInventoryId(),
           name,
+          location: location || undefined,
+          year: year || undefined,
           importDate: toISODate(new Date()),
           totalItems: items.length,
           status: 'active',
         },
         items,
+        schema,
+        unexpectedItems: [],
       };
 
       const saveResult = await StorageService.saveInventory(inventory);

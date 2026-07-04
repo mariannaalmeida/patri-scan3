@@ -6,16 +6,24 @@
  * ReportService, ChartService e as telas de relatório.
  */
 
-import { AssetItem, Inventory } from '../types/types';
+import {
+  AssetItem,
+  Inventory,
+  isScannedItem,
+  ScannedAssetItem,
+  UnexpectedItem,
+} from '../types/types';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../utils/dateUtils';
 
-// ─── Tipos de saída ───────────────────────────────────────────────────────────
+// ─── Tipos de saída ──────────────────────────────────────────────────────────
 
 export interface OverallStats {
   total: number;
   found: number;
   pending: number;
+  unexpectedCount: number;
   progressPct: number; // 0-100
-  startedAt: string | null; // ISO — primeiro scan da sessão
+  startedAt: string | null; // ISO — primeiro scan da sessão (inclui sobras)
   completedAt: string | null; // ISO — último scan (se 100%)
   durationMinutes: number | null;
 }
@@ -32,23 +40,22 @@ export interface ScanEvent {
   code: string;
   description: string;
   location: string;
-  department: string;
-  scanDate: string; // ISO (só existe para found items)
-  minutesFromStart: number; // delta desde o primeiro scan
+  scanDate: string; // ISO
+  minutesFromStart: number; // delta desde o primeiro scan geral
+  isUnexpected?: boolean; // Flag para UI diferenciar no histórico
 }
 
 export interface InventoryReport {
   inventoryName: string;
   generatedAt: string; // ISO
   overall: OverallStats;
-  byDepartment: GroupStat[];
-  byLocation: GroupStat[];
   scanTimeline: ScanEvent[];
   notFoundItems: AssetItem[];
-  foundItems: AssetItem[];
+  foundItems: ScannedAssetItem[];
+  unexpectedItems: UnexpectedItem[];
 }
 
-// ─── Serviço ──────────────────────────────────────────────────────────────────
+// Serviço
 
 export class AnalyticsService {
   /**
@@ -56,58 +63,62 @@ export class AnalyticsService {
    * Computa o relatório completo a partir de um Inventory.
    */
   static compute(inventory: Inventory): InventoryReport {
-    // Separa itens encontrados (found === true) e não encontrados
-    const foundItems = inventory.items.filter(
-      (item): item is AssetItem & { found: true; scanDate: string } => item.found === true
-    );
-    const notFoundItems = inventory.items.filter((item) => item.found === false);
+    // Separa itens originais encontrados e não encontrados
+    const foundItems = inventory.items.filter(isScannedItem);
+    const notFoundItems = inventory.items.filter((item) => !item.found);
+    const unexpectedItems = inventory.unexpectedItems ?? [];
 
-    const overall = this.computeOverall(inventory);
-    const byDepartment = this.computeByGroup(inventory, 'department');
-    const byLocation = this.computeByGroup(inventory, 'location');
-    const scanTimeline = this.computeTimeline(foundItems, overall.startedAt);
+    const overall = this.computeOverall(inventory, foundItems, unexpectedItems);
+
+    const scanTimeline = this.computeTimeline(foundItems, unexpectedItems, overall.startedAt);
 
     return {
       inventoryName: inventory.metadata.name,
       generatedAt: new Date().toISOString(),
       overall,
-      byDepartment,
-      byLocation,
       scanTimeline,
       notFoundItems,
       foundItems,
+      unexpectedItems,
     };
   }
 
   // ─── Overall ───────────────────────────────────────────────────────────────
 
-  private static computeOverall(inventory: Inventory): OverallStats {
+  private static computeOverall(
+    inventory: Inventory,
+    foundItems: ScannedAssetItem[],
+    unexpectedItems: UnexpectedItem[]
+  ): OverallStats {
     const total = inventory.items.length;
-    const found = inventory.items.filter((i) => i.found).length;
+    const found = foundItems.length;
     const pending = total - found;
+    const unexpectedCount = unexpectedItems.length;
     const progressPct = total > 0 ? Math.round((found / total) * 100) : 0;
 
-    // Datas a partir dos scanDates dos itens encontrados
-    const dates = inventory.items
-      .filter((i): i is AssetItem & { found: true; scanDate: string } => i.found === true)
-      .map((i) => new Date(i.scanDate).getTime())
-      .sort((a, b) => a - b);
+    // Extrai e junta as datas de TODOS os escaneamentos (Originais + Sobras)
+    const foundDates = foundItems.map((i) => new Date(i.scanDate).getTime());
+    const unexpectedDates = unexpectedItems.map((i) => new Date(i.scannedAt).getTime());
+    const allDates = [...foundDates, ...unexpectedDates].sort((a, b) => a - b);
 
-    const startedAt = dates.length > 0 ? new Date(dates[0]).toISOString() : null;
+    const startedAt = allDates.length > 0 ? new Date(allDates[0]).toISOString() : null;
+
+    // completedAt reflete a última leitura da sessão SE a lista original atingiu 100%
     const completedAt =
-      progressPct === 100 && dates.length > 0
-        ? new Date(dates[dates.length - 1]).toISOString()
+      progressPct === 100 && allDates.length > 0
+        ? new Date(allDates[allDates.length - 1]).toISOString()
         : null;
 
     const durationMinutes =
-      startedAt && dates.length > 1
-        ? Math.round((dates[dates.length - 1] - dates[0]) / 60000)
+      startedAt && allDates.length > 1
+        ? Math.round((allDates[allDates.length - 1] - allDates[0]) / 60000)
         : null;
 
     return {
       total,
       found,
       pending,
+      unexpectedCount,
       progressPct,
       startedAt,
       completedAt,
@@ -115,22 +126,57 @@ export class AnalyticsService {
     };
   }
 
+  // ─── Timeline ──────────────────────────────────────────────────────────────
+
+  private static computeTimeline(
+    foundItems: ScannedAssetItem[],
+    unexpectedItems: UnexpectedItem[],
+    startedAt: string | null
+  ): ScanEvent[] {
+    const startMs = startedAt ? new Date(startedAt).getTime() : null;
+
+    // Normaliza os eventos de itens originais
+    const foundEvents = foundItems.map((item) => ({
+      code: item.code,
+      description: item.description ?? '',
+      location: item.location ?? '',
+      scanDate: item.scanDate,
+      isUnexpected: false,
+    }));
+
+    // Normaliza os eventos de sobras físicas (compatibilizando scannedAt -> scanDate)
+    const unexpectedEvents = unexpectedItems.map((item) => ({
+      code: item.code,
+      description: item.description ?? '',
+      location: item.location ?? '',
+      scanDate: item.scannedAt,
+      isUnexpected: true,
+    }));
+
+    // Junta tudo, ordena cronologicamente e calcula o delta em minutos
+    return [...foundEvents, ...unexpectedEvents]
+      .sort((a, b) => new Date(a.scanDate).getTime() - new Date(b.scanDate).getTime())
+      .map((event) => {
+        const scanMs = new Date(event.scanDate).getTime();
+        return {
+          ...event,
+          minutesFromStart: startMs !== null ? Math.round((scanMs - startMs) / 60000) : 0,
+        };
+      });
+  }
+
   // ─── Agrupamento por campo ─────────────────────────────────────────────────
 
-  private static computeByGroup(
-    inventory: Inventory,
-    field: 'department' | 'location'
-  ): GroupStat[] {
-    // Set rápido de códigos encontrados
-    const foundCodes = new Set(inventory.items.filter((i) => i.found).map((i) => i.code));
-
+  private static computeByGroup(inventory: Inventory, field: 'location'): GroupStat[] {
     const groups = new Map<string, { total: number; found: number }>();
 
     for (const item of inventory.items) {
       const key = item[field]?.trim() || '(não informado)';
       const existing = groups.get(key) ?? { total: 0, found: 0 };
       existing.total++;
-      if (foundCodes.has(item.code)) existing.found++;
+
+      if (item.found) existing.found++;
+
       groups.set(key, existing);
     }
 
@@ -145,48 +191,17 @@ export class AnalyticsService {
       .sort((a, b) => b.total - a.total);
   }
 
-  // ─── Timeline ──────────────────────────────────────────────────────────────
-
-  private static computeTimeline(
-    foundItems: (AssetItem & { found: true; scanDate: string })[],
-    startedAt: string | null
-  ): ScanEvent[] {
-    const startMs = startedAt ? new Date(startedAt).getTime() : null;
-
-    return foundItems
-      .slice() // cria cópia para não modificar original
-      .sort((a, b) => new Date(a.scanDate).getTime() - new Date(b.scanDate).getTime())
-      .map((item) => {
-        const scanMs = new Date(item.scanDate).getTime();
-        return {
-          code: item.code,
-          description: item.description ?? '',
-          location: item.location ?? '',
-          department: item.department ?? '',
-          scanDate: item.scanDate,
-          minutesFromStart: startMs !== null ? Math.round((scanMs - startMs) / 60000) : 0,
-        };
-      });
-  }
-
-  // ─── Helpers de formatação (usados pelas telas e pelo export) ──────────────
+  // ─── Helpers de formatação ─────────────────────────────────────────────────
 
   static formatDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+    return formatDisplayDate(iso);
   }
 
   static formatTime(iso: string): string {
-    return new Date(iso).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDisplayTime(iso);
   }
 
   static formatDateTime(iso: string): string {
-    return `${this.formatDate(iso)} às ${this.formatTime(iso)}`;
+    return formatDisplayDateTime(iso);
   }
 }

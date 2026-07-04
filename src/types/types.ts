@@ -6,25 +6,28 @@
 export type InventoryId = string;
 export type AssetCode = string;
 
-// 1. Permita que MappableField seja qualquer string, mas mantenha o autocomplete pros fixo
+// Mantém autocomplete para os fixos e permite strings customizadas
 
-export type MappableField = 'code' | 'description' | 'department' | 'location' | 'status' | 'value';
+export type KnownFields = 'code' | 'description' | 'location' | 'value';
 
-// 2. Atualize o Type Guard para verificar apenas os campos nativos do sistema
-export const isStanField = (field: string): field is MappableField => {
-  return ['code', 'description', 'department', 'location', 'status', 'value'].includes(field);
+export type MappableField = KnownFields | (string & {});
+
+// Type Guard: Retorna true e ensina ao compilador que a string pertence aos campos nativos
+export const isStandardField = (field: string): field is KnownFields => {
+  return ['code', 'description', 'location', 'value'].includes(field);
 };
-
-export type AssetStatus = 'good' | 'damaged' | 'missing' | 'in_repair';
 
 export interface AssetItemBase {
   code: AssetCode;
-  description: string;
-  department: string;
-  location: string;
-  status: AssetStatus;
+  description?: string;
+  location?: string;
   value?: number;
   importDate?: ISODateString;
+  /**
+   * Campos dinâmicos definidos pelo usuário (Marca, Modelo, Cor, N° de Série…).
+   * Segue o padrão EAV — qualquer string pode ser chave.
+   */
+  customFields?: Record<string, string>;
 }
 
 export type AssetItem =
@@ -34,6 +37,8 @@ export type AssetItem =
 export interface InventoryMetadata {
   id: InventoryId;
   name: string;
+  location?: string;
+  year?: number;
   importDate: ISODateString;
   totalItems: number;
   status: 'active' | 'completed' | 'archived';
@@ -42,12 +47,23 @@ export interface InventoryMetadata {
   tags?: string[];
 }
 
+export interface UnexpectedItem {
+  code: string;
+  scannedAt: string; // ISO 8601
+  description?: string;
+  location?: string;
+  customFields?: Record<string, string>;
+}
+
 export interface Inventory {
   metadata: InventoryMetadata;
   items: AssetItem[];
-  schema?: InventorySchema;
+  unexpectedItems: UnexpectedItem[];
+  schema: InventorySchema;
   stats?: InventoryStats;
 }
+
+export type ScannedAssetItem = Extract<AssetItem, { found: true }>;
 
 // --- SCANNER ------
 export interface ScanResult {
@@ -71,7 +87,6 @@ export interface ScanSession {
 export type ThemeMode = 'light' | 'dark';
 
 export interface AppSettings {
-  soundEnabled: boolean;
   vibrationEnabled: boolean;
   flashEnabled: boolean;
   theme: ThemeMode;
@@ -111,7 +126,7 @@ export interface ColumnMappingScreenProps {
   headers: string[];
   rawData: Record<string, string | number | boolean | null>[];
   inventoryName: string;
-  onComplete: (mapping: Record<string, keyof AssetItem>) => void;
+  onComplete: (mapping: Record<string, MappableField>) => void;
 }
 
 // ---  Dynamic Schema ---
@@ -142,6 +157,7 @@ export interface InventorySchema {
 export interface InventoryStats {
   totalItems: number;
   scannedItems: number;
+  unexpectedCount: number;
   lastModified?: ISODateString;
   progress: number;
 }
@@ -169,34 +185,38 @@ export type ISODateString = string;
 export type RootStackParamList = {
   // Tela inicial
   Home: undefined;
-
   // Detalhe do inventário
   InventoryDetail: {
     inventoryId: string;
     inventoryName: string;
   };
-
   // Scanner
   Scanner: {
     inventoryId: string;
   };
-
   // Relatórios
   Reports: undefined;
+
   ReportDetail: {
     inventoryId: string;
     inventoryName?: string;
   };
-
   // Criação/Importação
   ImportInventory: undefined; // Importar CSV
-  ManualInventory: undefined; // Cadastro manual
-
-  InventoryList: undefined;
-
+  ManualInventory:
+    | {
+        inventoryId?: string;
+        inventoryName?: string;
+        prefilledCode?: string;
+      }
+    | undefined; // Cadastro manual
   // Configurações
   Settings: undefined;
-  About: undefined;
+  ItemDetail: {
+    inventoryId: string;
+    itemCode: string;
+    isUnexpected?: boolean;
+  };
 };
 
 // --- Export ---
@@ -224,6 +244,7 @@ export type AppErrorCode =
   | 'STORAGE_READ_FAILED'
   | 'STORAGE_DELETE_FAILED'
   | 'STORAGE_NOT_FOUND'
+
   // Importação
   | 'IMPORT_INVALID_FILE'
   | 'IMPORT_PARSE_FAILED'
@@ -239,6 +260,7 @@ export type AppErrorCode =
   | 'SCAN_CONFIRM_FAILED'
   // Exportação
   | 'EXPORT_WRITE_FAILED'
+  | 'UNEXPECTED_ITEM_REGISTER_FAILED'
   | 'EXPORT_SHARE_UNAVAILABLE'
   // Genérico
   | 'UNKNOWN';
@@ -272,3 +294,14 @@ export function unknownToAppError(cause: unknown, code: AppErrorCode = 'UNKNOWN'
  *   if (!result.ok) { Alert.alert('Erro', result.error.message) }
  */
 export type Result<T> = { ok: true; value: T } | { ok: false; error: AppError };
+
+export function isScannedItem(item: AssetItem): item is AssetItem & { found: true } {
+  return item.found === true;
+}
+
+//
+// TIPOS DE RELATÓRIO (definidos em AnalyticsService.ts)
+//
+// - InventoryReport, OverallStats, GroupStat, ScanEvent
+//   são gerados por AnalyticsService.compute().
+//   Consulte o serviço para detalhes.

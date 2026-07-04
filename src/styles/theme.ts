@@ -3,14 +3,31 @@ import { Platform, StyleSheet } from 'react-native';
 
 // Cores do sistema
 export const colors = {
+  // Cores de destaque (uso geral)
   accent: '#00E5A0',
   accentWarn: '#FFB830',
   accentErr: '#FF4D6D',
+  primary: '#534AB7',
+
+  // Cores semânticas (feedback ao usuário)
+  success: '#4CAF50', // Verde sucesso
+  warning: '#FFB830', // Amarelo/âmbar para avisos (pode usar o mesmo de accentWarn)
+  error: '#FF4D6D', // Vermelho erro (pode usar o mesmo de accentErr)
+  info: '#2196F3', // Azul informativo
+
+  // Fundo e superfícies
   bg: '#0A0A0F',
+  bgLight: '#FFFFFF',
   surface: '#14141C',
   surface2: '#1E1E2A',
-  text: '#F0F0F8',
-  textDim: '#6B6B88',
+  transparent: '#0000000d',
+  // Texto
+  text: '#F8F8FA', // Branco com traço quase imperceptível de azul (combina com o bg)
+  textDim: '#8888A0', // Cinza mais legível para legendas
+  textMuted: '#55556A', // *NOVO* - Ótimo para placeholders de inputs e ícones inativos
+
+  // Bordas
+  border: '#ffffff0A',
 } as const;
 
 // Estilos comuns (reutilizáveis)
@@ -169,6 +186,9 @@ export const scannerStyles = StyleSheet.create({
     gap: 6,
   },
   alertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,
@@ -179,8 +199,8 @@ export const scannerStyles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   alert_warning: {
-    backgroundColor: colors.accentWarn + '22',
-    borderLeftColor: colors.accentWarn,
+    backgroundColor: colors.warning + '22',
+    borderLeftColor: colors.warning,
   },
   alert_error: {
     backgroundColor: colors.accentErr + '22',
@@ -742,10 +762,6 @@ export const inventoryDetailStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accent + '44',
   },
-  reportBtnText: {
-    fontSize: 16,
-    color: colors.accent,
-  },
   loadingContainer: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -798,10 +814,6 @@ export const inventoryDetailStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  resetBtnText: {
-    fontSize: 20,
-    color: colors.textDim,
-  },
   statsSection: {
     backgroundColor: colors.surface,
     paddingHorizontal: 16,
@@ -839,7 +851,7 @@ export const inventoryDetailStyles = StyleSheet.create({
     color: colors.accent,
   },
   statCardValueWarn: {
-    color: colors.accentWarn,
+    color: colors.warning,
   },
   progressRow: {
     flexDirection: 'row',
@@ -901,7 +913,9 @@ export const inventoryDetailStyles = StyleSheet.create({
     gap: 8,
   },
   searchIcon: {
-    fontSize: 14,
+    // fontSize: 14,
+    // Se precisar, mas geralmente não é necessário com alignItems: 'center'
+    // lineHeight: 20
   },
   searchInput: {
     flex: 1,
@@ -944,8 +958,11 @@ export const inventoryDetailStyles = StyleSheet.create({
     flex: 1,
   },
   emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingVertical: 40,
+    gap: 12,
   },
   emptyIcon: {
     fontSize: 40,
@@ -990,12 +1007,6 @@ export const inventoryDetailStyles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-  },
-  scannedBadge: {
-    backgroundColor: colors.accent + '22',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
   },
   scannedBadgeText: {
     fontSize: 10,
@@ -1051,18 +1062,48 @@ export const inventoryDetailStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accent + '55',
   },
-  scanFabIcon: {
-    fontSize: 16,
-    color: '#000',
-    fontWeight: '800',
-  },
   scanFabLabel: {
     fontSize: 16,
     color: '#000',
     fontWeight: '800',
   },
-});
+  scanFabLabelComplete: {
+    color: colors.accent, // texto verde sobre fundo escuro
+  },
+  scannedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(76, 175, 80, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
 
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  customFieldsContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  customFieldRow: {
+    flexDirection: 'row',
+    marginBottom: 2,
+  },
+  customFieldKey: {
+    fontWeight: '600',
+    color: colors.textDim,
+    marginRight: 4,
+  },
+  customFieldValue: {
+    color: colors.text,
+  },
+});
+// estilo da tela de Home
 export const homeStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -1193,20 +1234,23 @@ export const homeStyles = StyleSheet.create({
   },
   actionBtn: {
     flex: 1,
-    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 13,
     borderRadius: 12,
+    minHeight: 70,
   },
   actionBtnPrimary: {
     backgroundColor: colors.accent,
   },
   actionBtnSecondary: {
     backgroundColor: colors.surface2,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.accent + '44',
+  },
+  actionBtnIconContainer: {
+    marginBottom: 4,
   },
   actionBtnIcon: {
     fontSize: 15,
@@ -1451,8 +1495,24 @@ export const homeStyles = StyleSheet.create({
   },
 });
 
-// Adicione após homeStyles
+// Adicione após  reportDetailStyles
 export const reportDetailStyles = StyleSheet.create({
+  scanRowUnexpected: {
+    backgroundColor: '#FFF3E0',
+    borderLeftColor: colors.warning,
+    borderLeftWidth: 3,
+  },
+  itemRowUnexpected: {
+    backgroundColor: '#FFF3E0', // fundo levemente alaranjado
+  },
+  itemIndUnexpected: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF9800', // laranja para itens inesperados
+    marginRight: 10,
+    marginTop: 4,
+  },
   iconBtn: {
     width: 36,
     height: 36,
@@ -1537,7 +1597,7 @@ export const reportDetailStyles = StyleSheet.create({
     borderColor: '#ffffff10',
   },
   exportBtnPDF: {
-    borderColor: colors.accentWarn + '33',
+    borderColor: colors.warning + '33',
   },
   exportBtnText: {
     fontSize: 12,
@@ -1617,7 +1677,7 @@ export const reportDetailStyles = StyleSheet.create({
     color: colors.accent,
   },
   statValueWarn: {
-    color: colors.accentWarn,
+    color: colors.warning,
   },
   progressSection: {
     marginBottom: 12,
@@ -1683,15 +1743,7 @@ export const reportDetailStyles = StyleSheet.create({
     color: colors.textDim,
     textAlign: 'center',
   },
-  groupTable: {
-    marginTop: 4,
-  },
-  groupTableHeader: {
-    flexDirection: 'row',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ffffff0A',
-  },
+
   groupTableHeaderCell: {
     flex: 1,
     fontSize: 9,
@@ -1737,14 +1789,14 @@ export const reportDetailStyles = StyleSheet.create({
     borderColor: '#ffffff0A',
   },
   itemRowPending: {
-    borderColor: colors.accentWarn + '22',
+    borderColor: colors.warning + '22',
   },
   itemInd: {
     width: 3,
     backgroundColor: '#ffffff10',
   },
   itemIndPending: {
-    backgroundColor: colors.accentWarn,
+    backgroundColor: colors.warning,
   },
   itemBody: {
     flex: 1,
@@ -1812,6 +1864,20 @@ export const reportDetailStyles = StyleSheet.create({
     fontSize: 11,
     color: colors.textDim,
   },
+  emptyText: {
+    fontSize: 12,
+    color: colors.textDim,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  itemIndScanned: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.success, // verde
+    marginRight: 10,
+    marginTop: 4,
+  },
 });
 
 export const createInventoryStyles = StyleSheet.create({
@@ -1830,13 +1896,18 @@ export const createInventoryStyles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   header: {
-    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 56 : 36,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: '#ffffff0A',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
   },
@@ -1845,7 +1916,7 @@ export const createInventoryStyles = StyleSheet.create({
     padding: 20,
   },
   label: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '500',
     color: colors.text,
     marginBottom: 8,
@@ -1981,15 +2052,17 @@ export const createInventoryStyles = StyleSheet.create({
     marginBottom: 4,
   },
   progressBar: {
-    height: 4,
+    width: '100%',
+    height: 8,
     backgroundColor: colors.surface2,
-    borderRadius: 2,
-    marginTop: 20,
+    borderRadius: 4,
     overflow: 'hidden',
+    marginBottom: 8,
   },
   progressFill: {
     height: '100%',
     backgroundColor: colors.accent,
+    borderRadius: 4,
   },
   errorText: {
     color: colors.accentErr,
@@ -1997,9 +2070,71 @@ export const createInventoryStyles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
   },
+  processingBox: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  processingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+
+  progressPercent: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accent,
+  },
 });
 
 export const reportsStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.bg, // ou colors.card
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textDim,
+    marginBottom: 16,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: colors.text,
+    marginLeft: 12,
+  },
+  modalCancel: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: colors.accentErr,
+  },
   backBtn: {
     width: 36,
     height: 36,
@@ -2013,6 +2148,9 @@ export const reportsStyles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     marginHorizontal: 12,
+    justifyContent: 'center', // ← centraliza verticalmente os textos
+    minHeight: 50, // ← garante altura mínima
+    overflow: 'visible',
   },
   iconBtn: {
     width: 36,
@@ -2057,18 +2195,23 @@ export const reportsStyles = StyleSheet.create({
     fontSize: 15,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: Platform.OS === 'ios' ? 56 : 36,
     paddingBottom: 14,
     paddingHorizontal: 20,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: '#ffffff0A',
+    overflow: 'visible', // ← garante que nada seja cortado
+    minHeight: 80, // ← altura mínima para o cabeçalho
   },
   headerTitle: {
     fontSize: 26,
     fontWeight: '800',
     color: colors.text,
-    letterSpacing: -0.5,
+    letterSpacing: 0,
   },
   headerSub: {
     fontSize: 13,
@@ -2190,7 +2333,7 @@ export const reportsStyles = StyleSheet.create({
     color: colors.accent,
   },
   miniStatWarn: {
-    color: colors.accentWarn,
+    color: colors.warning,
   },
   progressTrack: {
     height: 5,
@@ -2211,6 +2354,11 @@ export const reportsStyles = StyleSheet.create({
     fontSize: 11,
     color: colors.textDim,
     marginBottom: 10,
+  },
+  durationText: {
+    fontSize: 12,
+    color: colors.textDim, // ou '#9B9BAA' dependendo de como está o seu arquivo
+    marginLeft: 4,
   },
   actions: {
     flexDirection: 'row',
@@ -2236,11 +2384,14 @@ export const reportsStyles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-// src/styles/theme.ts
-
-// Adicione ao final do arquivo:
 
 export const manualInventoryStyles = StyleSheet.create({
+  duplicateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+
   backBtn: {
     width: 36,
     height: 36,
@@ -2282,7 +2433,7 @@ export const manualInventoryStyles = StyleSheet.create({
   },
 
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: colors.text,
   },
@@ -2418,8 +2569,6 @@ export const manualInventoryStyles = StyleSheet.create({
   },
 });
 
-// src/styles/theme.ts (adicione no final)
-
 export const settingsStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -2520,5 +2669,216 @@ export const aboutStyles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     lineHeight: 24,
+  },
+});
+
+export const localStyles = StyleSheet.create({
+  hint: {
+    color: colors.textDim,
+    fontSize: 12,
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+
+  // Schema field row
+  schemaFieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  schemaFieldName: {
+    flex: 1,
+    color: colors.text,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  removeFieldBtn: {
+    color: colors.warning,
+    fontSize: 16,
+    paddingHorizontal: 4,
+  },
+
+  // Add field row
+  addFieldRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  addFieldInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  addFieldBtn: {
+    backgroundColor: colors.accent ?? colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  addFieldBtnText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  // Status chips
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  statusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  statusChipActive: {
+    borderColor: colors.accent ?? colors.primary,
+    backgroundColor: colors.accent ?? colors.primary,
+  },
+  statusChipText: {
+    color: colors.textDim,
+    fontSize: 12,
+  },
+  statusChipTextActive: {
+    color: '#000',
+    fontWeight: '700',
+  },
+
+  // Custom fields section separator
+  customFieldsSection: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  customFieldsSectionTitle: {
+    color: colors.textDim,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+});
+export const itemDetailStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: colors.bg,
+  },
+  backBtn: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  statusSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  statusBadgeScanned: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success + '20',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  statusTextScanned: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.success,
+  },
+  statusBadgePending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning + '20',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  statusTextPending: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.warning,
+  },
+  section: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    color: colors.textDim,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  codeValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.accent,
+    letterSpacing: 1,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#ffffff0A',
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  fieldIcon: {
+    width: 32,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  fieldContent: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    color: colors.textDim,
+    marginBottom: 2,
+  },
+  fieldValue: {
+    fontSize: 16,
+    color: colors.text,
   },
 });

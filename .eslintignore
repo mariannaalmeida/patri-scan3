@@ -4,3 +4,7 @@ ios/
 .expo/
 dist/
 build/
+
+*.config.js
+babel.config.js
+metro.config.js

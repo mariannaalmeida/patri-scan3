@@ -5,18 +5,20 @@
  *   - Gráfico de pizza (encontrados vs. pendentes)
  *   - Barra de progresso geral
  *   - Linha do tempo de scans
- *   - Tabela por departamento
- *   - Tabela por localização
+ *   - Lista de itens encontrados
  *   - Lista de itens não encontrados
- *   - Histórico de scans com timestamp
+ *   - Itens não listados (fora da lista)
+ *   - Histórico de scans
+ *
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   ScrollView,
   StatusBar,
   Text,
@@ -24,58 +26,87 @@ import {
   View,
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import {
-  AnalyticsService,
-  GroupStat,
-  InventoryReport,
-  ScanEvent,
-} from '../services/AnalyticsService';
+import Toast from 'react-native-toast-message';
+import { AnalyticsService, InventoryReport, ScanEvent } from '../services/AnalyticsService';
 import { ChartService } from '../services/ChartService';
-import { CSVExportService } from '../services/CSVExportService';
+import { CSVExportService } from '../services/CsvExportService';
 import { ReportService } from '../services/ReportService';
 import { StorageService } from '../services/StorageService';
 import { colors, reportDetailStyles } from '../styles/theme';
-import { Result, RootStackParamList } from '../types/types'; 
+import { InventorySchema, RootStackParamList } from '../types/types';
 
-// ─── Navegação ────────────────────────────────────────────────────────────────
-
+//  Navegação
 type DetailRoute = RouteProp<RootStackParamList, 'ReportDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-// ─── Estilos ──────────────────────────────────────────────────────────────────
+//  Estilos
 const styles = reportDetailStyles;
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// Tipagem para o  Modal Customizado
+interface DialogConfig {
+  visible: boolean;
+  title: string;
+  message: string;
+  buttons: {
+    text: string;
+    onPress: () => void;
+    type: 'primary' | 'danger' | 'cancel';
+  }[];
+}
 
+//  Componente principal
 export const ReportDetailScreen = () => {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<DetailRoute>();
-  const { inventoryId, inventoryName: passedName } = route.params;
+  const { inventoryId } = route.params;
 
   const [report, setReport] = useState<InventoryReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const schemaRef = useRef<InventorySchema | undefined>(undefined);
 
-  // ─── Carregamento ──────────────────────────────────────────────────────────
+  // Estado para controlar o Modal de Confirmação/Menu
+  const [dialogConfig, setDialogConfig] = useState<DialogConfig>({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+  });
 
+  const closeDialog = () => setDialogConfig((prev) => ({ ...prev, visible: false }));
+
+  //  Carregamento
   const loadReport = useCallback(async () => {
     setIsLoading(true);
     try {
       const result = await StorageService.loadInventory(inventoryId);
-
       if (!result.ok) {
-        Alert.alert('Erro', result.error.message || 'Inventário não encontrado.', [
-          { text: 'Voltar', onPress: () => navigation.goBack() },
-        ]);
+        // Erro crítico: Usa o Dialog para forçar o usuário a voltar
+        setDialogConfig({
+          visible: true,
+          title: 'Erro',
+          message: result.error.message || 'Inventário não encontrado.',
+          buttons: [
+            {
+              text: 'Voltar',
+              type: 'primary',
+              onPress: () => {
+                closeDialog();
+                navigation.goBack();
+              },
+            },
+          ],
+        });
         return;
       }
 
       const inv = result.value;
+      schemaRef.current = inv.schema;
       const computedReport = AnalyticsService.compute(inv);
       setReport(computedReport);
     } catch (error) {
       console.error('Erro ao carregar relatório:', error);
-      Alert.alert('Erro', 'Não foi possível gerar o relatório.');
+      Toast.show({ type: 'error', text1: 'Erro', text2: 'Não foi possível gerar o relatório.' });
     } finally {
       setIsLoading(false);
     }
@@ -87,15 +118,14 @@ export const ReportDetailScreen = () => {
     }, [loadReport])
   );
 
-  // ─── SVGs dos gráficos (memoizados) ──────────────────────────────────────
-
+  // SVGs dos gráficos (memoizados)
   const pieSvg = useMemo(
     () =>
       report
         ? ChartService.buildPieChart({
             found: report.overall.found,
             pending: report.overall.pending,
-            size: 180,
+            size: 190,
           })
         : '',
     [report]
@@ -109,24 +139,7 @@ export const ReportDetailScreen = () => {
     [report]
   );
 
-  const deptSvg = useMemo(
-    () =>
-      report && report.byDepartment.length > 0
-        ? ChartService.buildBarChart(report.byDepartment, 300, 140)
-        : '',
-    [report]
-  );
-
-  const localSvg = useMemo(
-    () =>
-      report && report.byLocation.length > 0
-        ? ChartService.buildBarChart(report.byLocation, 300, 140)
-        : '',
-    [report]
-  );
-
-  // ─── Navegações ─────────────────────────────────────────────────────────────
-
+  //  Navegações
   const handleGoBack = () => {
     navigation.goBack();
   };
@@ -148,77 +161,103 @@ export const ReportDetailScreen = () => {
     navigation.navigate('Home');
   };
 
-  // ─── Exportações ──────────────────────────────────────────────────────────
+  // Exportações
+
+  // Função ajudante para processar a exportação CSV limpa
+  const executeCSVExport = async (type: 'found' | 'pending' | 'full') => {
+    closeDialog();
+    if (!report) return;
+    setIsExporting(true);
+
+    try {
+      let result;
+      if (type === 'found') {
+        result = await CSVExportService.exportFound(report, schemaRef.current);
+      } else if (type === 'pending') {
+        result = await CSVExportService.exportPending(report, schemaRef.current);
+      } else {
+        result = await CSVExportService.exportFull(report, schemaRef.current);
+      }
+
+      if (!result.ok) {
+        Toast.show({ type: 'error', text1: 'Erro na exportação', text2: result.error.message });
+      } else {
+        Toast.show({ type: 'success', text1: 'Sucesso', text2: 'Arquivo CSV exportado!' });
+      }
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Erro',
+        text2: error instanceof Error ? error.message : 'Erro inesperado',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleExportCSV = useCallback(() => {
     if (!report) return;
-    Alert.alert('Exportar CSV', 'Selecione o tipo de relatório que deseja exportar:', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: '📋 Encontrados',
-        onPress: async () => {
-          setIsExporting(true);
-          const result = await CSVExportService.exportFound(report);
-          setIsExporting(false);
-          if (!result.ok) {
-            Alert.alert('Erro', result.error.message);
-          } else {
-            Alert.alert('Sucesso', 'Arquivo exportado com sucesso!');
-          }
-        },
-      },
-      {
-        text: '⚠️ Não encontrados',
-        onPress: async () => {
-          setIsExporting(true);
-          const result = await CSVExportService.exportPending(report);
-          setIsExporting(false);
-          if (!result.ok) {
-            Alert.alert('Erro', result.error.message);
-          } else {
-            Alert.alert('Sucesso', 'Arquivo exportado com sucesso!');
-          }
-        },
-      },
-      {
-        text: '📊 Completo',
-        onPress: async () => {
-          setIsExporting(true);
-          const result = await CSVExportService.exportFull(report);
-          setIsExporting(false);
-          if (!result.ok) {
-            Alert.alert('Erro', result.error.message);
-          } else {
-            Alert.alert('Sucesso', 'Arquivo exportado com sucesso!');
-          }
-        },
-      },
-    ]);
+
+    // Abre o Dialog como um Menu de Opções
+    setDialogConfig({
+      visible: true,
+      title: 'Exportar CSV',
+      message: 'Selecione o tipo de relatório que deseja exportar:',
+      buttons: [
+        { text: 'Encontrados', type: 'primary', onPress: () => executeCSVExport('found') },
+        { text: 'Não encontrados', type: 'primary', onPress: () => executeCSVExport('pending') },
+        { text: 'Completo', type: 'primary', onPress: () => executeCSVExport('full') },
+        { text: 'Cancelar', type: 'cancel', onPress: closeDialog },
+      ],
+    });
   }, [report]);
 
   const handleExportPDF = useCallback(() => {
     if (!report) return;
-    Alert.alert('Exportar PDF', 'Deseja exportar o relatório completo em PDF?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Exportar',
-        onPress: async () => {
-          setIsExporting(true);
-          try {
-            await ReportService.exportPDF(report);
-            Alert.alert('Sucesso', 'PDF exportado com sucesso!');
-          } catch (error) {
-            Alert.alert('Erro', error instanceof Error ? error.message : 'Falha ao exportar PDF');
-          } finally {
-            setIsExporting(false);
-          }
+
+    setDialogConfig({
+      visible: true,
+      title: 'Exportar PDF',
+      message: 'Deseja exportar o relatório completo em PDF?',
+      buttons: [
+        { text: 'Cancelar', type: 'cancel', onPress: closeDialog },
+        {
+          text: 'Exportar',
+          type: 'primary',
+          onPress: async () => {
+            closeDialog();
+            setIsExporting(true);
+            try {
+              const result = await ReportService.exportPDF(report);
+              if (!result.ok) {
+                Toast.show({
+                  type: 'error',
+                  text1: 'Erro na exportação',
+                  text2: result.error.message,
+                });
+              } else {
+                Toast.show({
+                  type: 'success',
+                  text1: 'Sucesso',
+                  text2: 'PDF exportado com sucesso!',
+                });
+              }
+            } catch (error) {
+              Toast.show({
+                type: 'error',
+                text1: 'Erro',
+                text2: 'Falha inesperada ao exportar PDF',
+              });
+            } finally {
+              setIsExporting(false);
+            }
+          },
         },
-      },
-    ]);
+      ],
+    });
   }, [report]);
 
-  // ─── Loading ───────────────────────────────────────────────────────────────
-
+  // Loading
   if (isLoading || !report) {
     return (
       <View style={styles.loadingContainer}>
@@ -231,17 +270,22 @@ export const ReportDetailScreen = () => {
 
   const { overall } = report;
   const isComplete = overall.progressPct === 100;
+  const hasTimeline = report.scanTimeline.length > 0;
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
+  //  Render
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
       {/* Header com navegação completa */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>←</Text>
+        <TouchableOpacity
+          onPress={handleGoBack}
+          style={styles.backBtn}
+          accessibilityLabel="Voltar"
+          accessibilityRole="button"
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
@@ -254,19 +298,31 @@ export const ReportDetailScreen = () => {
         </View>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* Botão para voltar ao inventário */}
-          <TouchableOpacity onPress={handleGoToInventoryDetail} style={styles.iconBtn}>
-            <Text style={styles.iconBtnText}>📋</Text>
+          <TouchableOpacity
+            onPress={handleGoToInventoryDetail}
+            style={styles.iconBtn}
+            accessibilityLabel="Ir para detalhes do inventário"
+            accessibilityRole="button"
+          >
+            <Ionicons name="list-outline" size={22} color={colors.accent} />
           </TouchableOpacity>
-          
-          {/* Botão para lista de relatórios */}
-          <TouchableOpacity onPress={handleGoToReports} style={styles.iconBtn}>
-            <Text style={styles.iconBtnText}>📊</Text>
+
+          <TouchableOpacity
+            onPress={handleGoToReports}
+            style={styles.iconBtn}
+            accessibilityLabel="Ir para relatórios"
+            accessibilityRole="button"
+          >
+            <Ionicons name="bar-chart-outline" size={22} color={colors.accent} />
           </TouchableOpacity>
-          
-          {/* Botão para Home */}
-          <TouchableOpacity onPress={handleGoToHome} style={styles.iconBtn}>
-            <Text style={styles.iconBtnText}>🏠</Text>
+
+          <TouchableOpacity
+            onPress={handleGoToHome}
+            style={styles.iconBtn}
+            accessibilityLabel="Ir para início"
+            accessibilityRole="button"
+          >
+            <Ionicons name="home-outline" size={22} color={colors.accent} />
           </TouchableOpacity>
         </View>
       </View>
@@ -284,7 +340,7 @@ export const ReportDetailScreen = () => {
               style={[styles.exportBtn, styles.exportBtnPDF]}
               onPress={handleExportPDF}
             >
-              <Text style={[styles.exportBtnText, { color: colors.accentWarn }]}>PDF</Text>
+              <Text style={[styles.exportBtnText, { color: colors.warning }]}>PDF</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -300,7 +356,7 @@ export const ReportDetailScreen = () => {
           <View style={styles.overviewRow}>
             {/* Pizza */}
             <View style={styles.pieWrapper}>
-              <SvgXml xml={pieSvg} width={160} height={160} />
+              <SvgXml xml={pieSvg} width={180} height={180} />
             </View>
 
             {/* Stats à direita */}
@@ -340,45 +396,57 @@ export const ReportDetailScreen = () => {
                   value={AnalyticsService.formatDateTime(overall.completedAt)}
                 />
               )}
-              {overall.durationMinutes !== null && overall.durationMinutes !== undefined && (
+              {overall.durationMinutes != null && overall.durationMinutes > 0 && (
                 <MetaItem label="Duração" value={`${overall.durationMinutes} min`} />
               )}
             </View>
           )}
         </Section>
 
+        {/* ── Itens encontrados ── */}
+        <Section title={`Itens encontrados (${report.foundItems.length})`}>
+          {report.foundItems.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhum item encontrado ainda.</Text>
+          ) : (
+            report.foundItems.map((item, index) => (
+              <View key={`found-${item.code}-${index}`} style={styles.itemRow}>
+                <View style={[styles.itemInd, styles.itemIndScanned]} />
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemCode}>{item.code}</Text>
+                  {item.description ? (
+                    <Text style={styles.itemDesc}>{item.description}</Text>
+                  ) : null}
+                  <View style={styles.itemMeta}>
+                    {item.location ? (
+                      <Text style={styles.itemMetaTxt}>
+                        <Ionicons name="location-outline" size={12} /> {item.location}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.itemMetaTxt}>
+                      <Ionicons name="time-outline" size={12} />{' '}
+                      {AnalyticsService.formatDateTime(item.scanDate)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </Section>
+
         {/* ── Linha do tempo ── */}
-        {report.scanTimeline.length > 0 && timelineSvg && (
+        {hasTimeline && timelineSvg && (
           <Section title={`Linha do tempo (${report.scanTimeline.length} scans)`}>
             <View style={styles.chartDark}>
               <SvgXml xml={timelineSvg} width="100%" height={110} />
             </View>
-            {overall.durationMinutes !== null && report.scanTimeline.length > 1 && (
-              <Text style={styles.chartCaption}>
-                Média: {((overall.durationMinutes * 60) / report.scanTimeline.length).toFixed(0)}s
-                por item
-              </Text>
-            )}
-          </Section>
-        )}
-
-        {/* ── Por departamento ── */}
-        {report.byDepartment.length > 0 && deptSvg && (
-          <Section title="Por departamento">
-            <View style={styles.chartDark}>
-              <SvgXml xml={deptSvg} width="100%" height={140} />
-            </View>
-            <GroupTable groups={report.byDepartment} />
-          </Section>
-        )}
-
-        {/* ── Por localização ── */}
-        {report.byLocation.length > 0 && localSvg && (
-          <Section title="Por localização">
-            <View style={styles.chartDark}>
-              <SvgXml xml={localSvg} width="100%" height={140} />
-            </View>
-            <GroupTable groups={report.byLocation} />
+            {overall.durationMinutes != null &&
+              overall.durationMinutes > 0 &&
+              report.scanTimeline.length > 1 && (
+                <Text style={styles.chartCaption}>
+                  Média: {((overall.durationMinutes * 60) / report.scanTimeline.length).toFixed(0)}s
+                  por item
+                </Text>
+              )}
           </Section>
         )}
 
@@ -386,11 +454,20 @@ export const ReportDetailScreen = () => {
         <Section title={`Itens não encontrados (${report.notFoundItems.length})`}>
           {report.notFoundItems.length === 0 ? (
             <View style={styles.allFoundBanner}>
-              <Text style={styles.allFoundText}>🎉 Todos os itens foram localizados!</Text>
+              <Ionicons
+                name="checkmark-circle"
+                size={20}
+                color={colors.success}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.allFoundText}>Todos os itens foram localizados!</Text>
             </View>
           ) : (
             report.notFoundItems.map((item, i) => (
-              <View key={`nf-${item.code}-${i}`} style={[styles.itemRow, styles.itemRowPending]}>
+              <View
+                key={`nf-${item.code}-${item.location ?? ''}-${i}`}
+                style={[styles.itemRow, styles.itemRowPending]}
+              >
                 <View style={[styles.itemInd, styles.itemIndPending]} />
                 <View style={styles.itemBody}>
                   <Text style={styles.itemCode}>{item.code}</Text>
@@ -399,10 +476,9 @@ export const ReportDetailScreen = () => {
                   ) : null}
                   <View style={styles.itemMeta}>
                     {item.location ? (
-                      <Text style={styles.itemMetaTxt}>📍 {item.location}</Text>
-                    ) : null}
-                    {item.department ? (
-                      <Text style={styles.itemMetaTxt}>🏢 {item.department}</Text>
+                      <Text style={styles.itemMetaTxt}>
+                        <Ionicons name="location-outline" size={12} /> {item.location}
+                      </Text>
                     ) : null}
                   </View>
                 </View>
@@ -411,8 +487,41 @@ export const ReportDetailScreen = () => {
           )}
         </Section>
 
+        {/* ── Itens não listados (fora da lista) ── */}
+        <Section title={`Itens não listados (${report.unexpectedItems.length})`}>
+          {report.unexpectedItems.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhum item inesperado registrado.</Text>
+          ) : (
+            report.unexpectedItems.map((item, index) => (
+              <View
+                key={`unexp-${item.code}-${index}`}
+                style={[styles.itemRow, styles.itemRowUnexpected]}
+              >
+                <View style={[styles.itemInd, styles.itemIndUnexpected]} />
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemCode}>{item.code}</Text>
+                  {item.description ? (
+                    <Text style={styles.itemDesc}>{item.description}</Text>
+                  ) : null}
+                  <View style={styles.itemMeta}>
+                    {item.location ? (
+                      <Text style={styles.itemMetaTxt}>
+                        <Ionicons name="location-outline" size={12} /> {item.location}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.itemMetaTxt}>
+                      <Ionicons name="time-outline" size={12} />{' '}
+                      {AnalyticsService.formatDateTime(item.scannedAt)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </Section>
+
         {/* ── Histórico de scans ── */}
-        {report.scanTimeline.length > 0 && (
+        {hasTimeline && (
           <Section title="Histórico de scans">
             {report.scanTimeline.map((event, i) => (
               <ScanEventRow key={`ev-${event.code}-${i}`} event={event} index={i} />
@@ -420,13 +529,14 @@ export const ReportDetailScreen = () => {
           </Section>
         )}
       </ScrollView>
+      <CustomDialog config={dialogConfig} />
     </View>
   );
 };
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
 
-const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+const Section = React.memo(({ title, children }: { title: string; children: React.ReactNode }) => (
   <View style={styles.section}>
     <View style={styles.sectionHeader}>
       <View style={styles.sectionAccent} />
@@ -434,77 +544,55 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
     </View>
     {children}
   </View>
+));
+
+const StatCard = React.memo(
+  ({
+    label,
+    value,
+    accent,
+    warn,
+  }: {
+    label: string;
+    value: number;
+    accent?: boolean;
+    warn?: boolean;
+  }) => (
+    <View style={styles.statCard}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text
+        style={[
+          styles.statValue,
+          accent && styles.statValueAccent,
+          warn && value > 0 && styles.statValueWarn,
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
+  )
 );
 
-const StatCard = ({
-  label,
-  value,
-  accent,
-  warn,
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  warn?: boolean;
-}) => (
-  <View style={styles.statCard}>
-    <Text style={styles.statLabel}>{label}</Text>
-    <Text
-      style={[
-        styles.statValue,
-        accent && styles.statValueAccent,
-        warn && value > 0 && styles.statValueWarn,
-      ]}
-    >
-      {value}
-    </Text>
-  </View>
-);
-
-const MetaItem = ({ label, value }: { label: string; value: string }) => (
+const MetaItem = React.memo(({ label, value }: { label: string; value: string }) => (
   <View style={styles.metaItem}>
     <Text style={styles.metaLabel}>{label}</Text>
     <Text style={styles.metaValue}>{value}</Text>
   </View>
-);
+));
 
-const GroupTable = ({ groups }: { groups: GroupStat[] }) => (
-  <View style={styles.groupTable}>
-    <View style={styles.groupTableHeader}>
-      {['Grupo', 'Total', 'Enc.', '%'].map((h) => (
-        <Text key={h} style={styles.groupTableHeaderCell}>
-          {h}
-        </Text>
-      ))}
-    </View>
-    {groups.map((g, i) => (
-      <View key={`${g.label}-${i}`} style={[styles.groupRow, i % 2 === 0 && styles.groupRowEven]}>
-        <Text style={[styles.groupCell, { flex: 2 }]} numberOfLines={1}>
-          {g.label}
-        </Text>
-        <Text style={styles.groupCell}>{g.total}</Text>
-        <Text style={[styles.groupCell, { color: colors.accent }]}>{g.found}</Text>
-        <Text
-          style={[
-            styles.groupCell,
-            { color: g.progressPct === 100 ? colors.accent : colors.accentWarn },
-          ]}
-        >
-          {g.progressPct}%
-        </Text>
-      </View>
-    ))}
-  </View>
-);
-
-const ScanEventRow = ({ event, index }: { event: ScanEvent; index: number }) => (
-  <View style={styles.scanRow}>
+const ScanEventRow = React.memo(({ event, index }: { event: ScanEvent; index: number }) => (
+  <View style={[styles.scanRow, event.isUnexpected && styles.scanRowUnexpected]}>
     <Text style={styles.scanIndex}>{index + 1}</Text>
     <View style={styles.scanBody}>
       <View style={styles.scanHeader}>
-        <Text style={styles.scanCode}>{event.code}</Text>
+        <Text style={styles.scanCode}>
+          {event.code}
+          {event.isUnexpected ? (
+            <Text style={{ color: colors.warning, fontSize: 10 }}> (Não Listado)</Text>
+          ) : null}
+        </Text>
         <Text style={styles.scanTime}>
-          {AnalyticsService.formatTime(event.scanDate)}
+          {AnalyticsService.formatDateTime(event.scanDate)}
           <Text style={styles.scanDelta}> +{event.minutesFromStart}min</Text>
         </Text>
       </View>
@@ -513,7 +601,85 @@ const ScanEventRow = ({ event, index }: { event: ScanEvent; index: number }) => 
           {event.description}
         </Text>
       ) : null}
-      {event.location ? <Text style={styles.scanMeta}>📍 {event.location}</Text> : null}
+      {event.location ? (
+        <Text style={styles.scanMeta}>
+          <Ionicons name="location-outline" size={11} /> {event.location}
+        </Text>
+      ) : null}
     </View>
   </View>
-);
+));
+
+const CustomDialog = ({ config }: { config: DialogConfig }) => {
+  if (!config.visible) return null;
+
+  return (
+    <Modal visible={config.visible} transparent animationType="fade">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(10, 10, 15, 0.85)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            width: '100%',
+            borderRadius: 16,
+            padding: 24,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 12 }}>
+            {config.title}
+          </Text>
+
+          <Text style={{ fontSize: 16, color: colors.textDim, marginBottom: 24, lineHeight: 22 }}>
+            {config.message}
+          </Text>
+
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 12 }}
+          >
+            {config.buttons.map((btn, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={btn.onPress}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 8,
+                  backgroundColor:
+                    btn.type === 'primary'
+                      ? colors.accent
+                      : btn.type === 'danger'
+                        ? colors.error + '20'
+                        : 'transparent',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: '600',
+                    color:
+                      btn.type === 'primary'
+                        ? '#000'
+                        : btn.type === 'danger'
+                          ? colors.error
+                          : colors.textDim,
+                  }}
+                >
+                  {btn.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};

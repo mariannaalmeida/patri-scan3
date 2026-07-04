@@ -9,27 +9,36 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export const useAppNavigation = () => {
   const navigation = useNavigation<NavigationProp>();
 
-  // Navegação principal
+  // ─── Navegação principal ────────────────────────────────────────────
   const goToHome = () => navigation.navigate('Home');
-  const goToInventoryDetail = (inventoryId: string, inventoryName: string) =>
-    navigation.navigate('InventoryDetail', { inventoryId, inventoryName });
-  const goToScanner = (inventoryId: string) =>
-    navigation.navigate('Scanner', { inventoryId });
-  
-  // Navegação de relatórios
+
+  const goToInventoryDetail = (params: { inventoryId: string; inventoryName: string }) =>
+    navigation.navigate('InventoryDetail', params);
+
+  const goToScanner = (params: { inventoryId: string }) => navigation.navigate('Scanner', params);
+
+  const goToItemDetail = (params: {
+    inventoryId: string;
+    itemCode: string;
+    isUnexpected?: boolean;
+  }) => navigation.navigate('ItemDetail', params);
+
+  // ─── Navegação de relatórios ─────────────────────────────────────────
   const goToReports = () => navigation.navigate('Reports');
-  const goToReportDetail = (inventoryId: string, inventoryName?: string) =>
-    navigation.navigate('ReportDetail', { inventoryId, inventoryName });
-  
-  // Navegação de criação
+
+  const goToReportDetail = (params: { inventoryId: string; inventoryName?: string }) =>
+    navigation.navigate('ReportDetail', params);
+
+  // ─── Navegação de criação ────────────────────────────────────────────
   const goToImportInventory = () => navigation.navigate('ImportInventory');
-  const goToManualInventory = () => navigation.navigate('ManualInventory');
-  
-  // Navegação de configurações
-  //const goToSettings = () => navigation.navigate('Settings');
- // const goToAbout = () => navigation.navigate('About');
-  
-  // Voltar
+
+  const goToManualInventory = (params?: { inventoryId?: string; inventoryName?: string }) =>
+    navigation.navigate('ManualInventory', params);
+
+  // ─── Navegação de configurações ──────────────────────────────────────
+  const goToSettings = () => navigation.navigate('Settings');
+
+  // ─── Voltar ──────────────────────────────────────────────────────────
   const goBack = () => navigation.goBack();
 
   return {
@@ -40,9 +49,9 @@ export const useAppNavigation = () => {
     goToReportDetail,
     goToImportInventory,
     goToManualInventory,
-    //goToSettings,
-    //goToAbout,
+    goToSettings,
     goBack,
+    goToItemDetail,
     navigation,
   };
 };

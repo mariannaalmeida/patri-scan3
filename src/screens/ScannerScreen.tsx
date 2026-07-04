@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -44,36 +45,70 @@ export const ScannerScreen = () => {
 
   const [mode, setMode] = useState<ScanMode>('camera');
   const [permission, requestPermission] = useCameraPermissions();
-  const [isCameraActive, setIsCameraActive] = useState(true);
   const [manualCode, setManualCode] = useState('');
   const manualInputRef = useRef<TextInput>(null);
 
   const [pendingItem, setPendingItem] = useState<AssetItem | null>(null);
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
 
+  // ──────────────────────────────────────────────────────────────────────
+
   const [alerts, setAlerts] = useState<AlertBanner[]>([]);
   const alertCounter = useRef(0);
+  const alertTimeouts = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const lastScannedCode = useRef<string>('');
   const scanCooldown = useRef(false);
+  const scanCooldownTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lastItemAnim = useRef(new Animated.Value(0)).current;
   const [lastScanned, setLastScanned] = useState<AssetItem | null>(null);
 
-  // Carregar inventário
+  const confirmingRef = useRef(false);
+
+  // Limpeza de todos os timeouts ao desmontar
+  useEffect(() => {
+    return () => {
+      alertTimeouts.current.forEach((timeout) => clearTimeout(timeout));
+      alertTimeouts.current.clear();
+      if (scanCooldownTimeout.current) {
+        clearTimeout(scanCooldownTimeout.current);
+      }
+    };
+  }, []);
+
+  // Carregar inventário com guarda e garantia de loading state
   useEffect(() => {
     const loadInventory = async () => {
-      const result = await StorageService.loadInventory(inventoryId);
-      if (result.ok) {
-        setInventory(result.value);
-        setError(null);
-      } else {
-        setError(result.error.message);
-        Alert.alert('Erro', result.error.message);
+      if (!inventoryId) {
+        const errMsg = 'ID do inventário não fornecido na navegação.';
+        setError(errMsg);
+        setLoading(false);
+        Alert.alert('Erro de Parâmetro', errMsg);
         navigation.goBack();
+        return;
       }
-      setLoading(false);
+
+      try {
+        const result = await StorageService.loadInventory(inventoryId);
+        if (result.ok) {
+          setInventory(result.value);
+          setError(null);
+        } else {
+          setError(result.error.message);
+          Alert.alert('Erro', result.error.message);
+          navigation.goBack();
+        }
+      } catch (err) {
+        const unexpectedError = 'Falha inesperada ao tentar carregar o inventário.';
+        setError(unexpectedError);
+        Alert.alert('Erro Crítico', unexpectedError);
+        navigation.goBack();
+      } finally {
+        setLoading(false);
+      }
     };
+
     loadInventory();
   }, [inventoryId, navigation]);
 
@@ -88,16 +123,20 @@ export const ScannerScreen = () => {
     }
   }, [mode, permission, requestPermission]);
 
-  // Alertas
+  // Alertas com controle de memória
   const showAlert = useCallback((type: AlertBanner['type'], message: string) => {
     const id = ++alertCounter.current;
     setAlerts((prev) => [...prev.slice(-2), { id, type, message }]);
-    setTimeout(() => {
+
+    const timeoutId = setTimeout(() => {
       setAlerts((prev) => prev.filter((a) => a.id !== id));
+      alertTimeouts.current.delete(id);
     }, 3500);
+
+    alertTimeouts.current.set(id, timeoutId);
   }, []);
 
-  // Animação do último item
+  // Animação do último item escaneado
   const animateLastItem = useCallback(() => {
     lastItemAnim.setValue(0);
     Animated.spring(lastItemAnim, {
@@ -108,26 +147,35 @@ export const ScannerScreen = () => {
     }).start();
   }, [lastItemAnim]);
 
+  // ──────────────────────────────────────────────────────────────────────
+
   // Lógica de scan
   const handleCodeScanned = useCallback(
     (code: string) => {
-      if (!inventory) return;
-      const trimmed = code.trim();
-      if (!ScannerService.validateCode(trimmed)) return;
+      if (!inventory || isConfirmVisible || pendingItem) return;
 
-      if (scanCooldown.current || lastScannedCode.current === trimmed) return;
+      if (__DEV__) {
+        console.log('[Scanner] Código capturado:', code);
+      }
+
+      const normalizedCode = ScannerService.normalizeCode(code);
+
+      if (!ScannerService.validateCode(normalizedCode)) return;
+
+      if (scanCooldown.current || lastScannedCode.current === normalizedCode) return;
       scanCooldown.current = true;
-      lastScannedCode.current = trimmed;
-      setTimeout(() => {
+      lastScannedCode.current = normalizedCode;
+
+      scanCooldownTimeout.current = setTimeout(() => {
         scanCooldown.current = false;
         lastScannedCode.current = '';
+        scanCooldownTimeout.current = null;
       }, 1500);
 
-      const match = ScannerService.findItemByCode(trimmed, inventory);
+      const match = ScannerService.findItemByCode(normalizedCode, inventory);
       const feedback = ScannerService.getFeedback(match);
 
       if (match.status === 'found' && match.item) {
-        setIsCameraActive(false);
         setPendingItem(match.item);
         setIsConfirmVisible(true);
         Vibration.vibrate(80);
@@ -136,63 +184,115 @@ export const ScannerScreen = () => {
         showAlert('warning', feedback.message);
       } else if (match.status === 'not_found') {
         Vibration.vibrate([0, 100, 50, 100]);
-        showAlert('error', feedback.message);
+
+        Alert.alert(
+          'Código não encontrado',
+          `O código "${normalizedCode}" não está na lista original. Deseja registrar este item não listado?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'Registrar',
+              onPress: () => {
+                // Pausa o scanner brevemente
+                scanCooldown.current = true;
+
+                // Navega para a tela manual passando os dados E o código escaneado
+                navigation.navigate('ManualInventory', {
+                  inventoryId: inventory.metadata.id,
+                  inventoryName: inventory.metadata.name,
+                  prefilledCode: normalizedCode, // <--- Enviando o código para a tela!
+                } as any); // (o 'as any' evita erro do TypeScript se prefilledCode não estiver no types.ts)
+              },
+            },
+          ]
+        );
       }
     },
-    [inventory, showAlert]
+    [inventory, isConfirmVisible, pendingItem, showAlert]
   );
 
   // Confirmação do scan
   const handleConfirm = useCallback(async () => {
-    if (!pendingItem || !inventory) return;
+    if (!pendingItem || !inventory || confirmingRef.current) return;
 
-    const result = await ScannerService.confirmScan(inventory.metadata.id, pendingItem);
+    const itemToConfirm = pendingItem;
+    confirmingRef.current = true;
 
-    setIsConfirmVisible(false);
-    setPendingItem(null);
+    try {
+      setIsConfirmVisible(false);
+      setPendingItem(null);
 
-    if (result.ok) {
-      const updatedInventory = result.value.updatedInventory;
-      setInventory(updatedInventory);
-      setLastScanned(pendingItem);
-      animateLastItem();
-      showAlert('success', `✓ ${pendingItem.description || pendingItem.code}`);
-
-      const newProgress = ScannerService.getProgress(updatedInventory);
-      if (newProgress.remaining === 0) {
-        setTimeout(() => {
-          Alert.alert('🎉 Inventário completo!', 'Todos os itens foram escaneados.', [
-            {
-              text: 'Ver relatório',
-              onPress: () =>
-                navigation.navigate('ReportDetail', {
-                  inventoryId: updatedInventory.metadata.id,
-                  inventoryName: updatedInventory.metadata.name,
-                }),
-            },
-            {
-              text: 'Ver inventário',
-              onPress: () =>
-                navigation.navigate('InventoryDetail', {
-                  inventoryId: updatedInventory.metadata.id,
-                  inventoryName: updatedInventory.metadata.name,
-                }),
-            },
-            { text: 'Fechar', style: 'cancel' },
-          ]);
-        }, 600);
+      if (__DEV__) {
+        console.log('Confirmando scan:', {
+          inventoryId: inventory.metadata.id,
+          itemCode: itemToConfirm.code,
+        });
       }
-    } else {
-      showAlert('error', result.error.message);
+
+      const result = await ScannerService.confirmScan(inventory.metadata.id, itemToConfirm);
+
+      if (result.ok) {
+        const { updatedItem } = result.value;
+
+        // 1. MONTAMOS O NOVO INVENTÁRIO AQUI FORA
+        const newItems = inventory.items.map((i) =>
+          i.code === updatedItem.code ? updatedItem : i
+        );
+
+        const updatedInventory = {
+          ...inventory,
+          items: newItems,
+        };
+
+        // 2. ATUALIZAMOS O ESTADO UMA ÚNICA VEZ (Função 100% pura)
+        setInventory(updatedInventory);
+
+        // 3. EFEITOS VISUAIS E ANIMAÇÕES
+        setLastScanned(updatedItem);
+        animateLastItem();
+        showAlert(
+          'success',
+          `${updatedItem.description || updatedItem.code} escaneado com sucesso.`
+        );
+
+        // 4. VERIFICAÇÃO DE PROGRESSO USANDO A NOSSA VARIÁVEL LOCAL
+        const newProgress = ScannerService.getProgress(updatedInventory);
+
+        if (newProgress.remaining === 0) {
+          setTimeout(() => {
+            Alert.alert('Inventário completo', 'Todos os itens foram escaneados.', [
+              {
+                text: 'Ver relatório',
+                onPress: () =>
+                  navigation.navigate('ReportDetail', {
+                    inventoryId: updatedInventory.metadata.id,
+                    inventoryName: updatedInventory.metadata.name,
+                  }),
+              },
+              {
+                text: 'Ver inventário',
+                onPress: () =>
+                  navigation.navigate('InventoryDetail', {
+                    inventoryId: updatedInventory.metadata.id,
+                    inventoryName: updatedInventory.metadata.name,
+                  }),
+              },
+              { text: 'Fechar', style: 'cancel' },
+            ]);
+          }, 600);
+        }
+      } else {
+        showAlert('error', result.error.message);
+      }
+    } finally {
+      confirmingRef.current = false;
     }
+  }, [pendingItem, inventory, animateLastItem, showAlert, navigation, inventoryId]);
 
-    setIsCameraActive(true);
-  }, [pendingItem, inventory, animateLastItem, showAlert, navigation]);
-
+  // Cancelar confirmação
   const handleCancelConfirm = useCallback(() => {
     setIsConfirmVisible(false);
     setPendingItem(null);
-    setIsCameraActive(true);
   }, []);
 
   // Input manual
@@ -203,7 +303,6 @@ export const ScannerScreen = () => {
     manualInputRef.current?.focus();
   }, [manualCode, handleCodeScanned]);
 
-  // ✅ Navegações adicionais
   const handleGoBack = () => {
     navigation.goBack();
   };
@@ -212,7 +311,7 @@ export const ScannerScreen = () => {
     navigation.navigate('Home');
   };
 
-  // Render loading / erro
+  // Renderização condicional de loading / erro
   if (loading) {
     return (
       <View style={commonStyles.loadingContainer}>
@@ -227,6 +326,7 @@ export const ScannerScreen = () => {
     return (
       <View style={commonStyles.loadingContainer}>
         <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+        <Ionicons name="alert-circle-outline" size={48} color={colors.accentErr} />
         <Text style={commonStyles.errorText}>Inventário não encontrado.</Text>
         <TouchableOpacity onPress={handleGoBack} style={commonStyles.errorButton}>
           <Text style={commonStyles.errorButtonText}>Voltar</Text>
@@ -235,19 +335,20 @@ export const ScannerScreen = () => {
     );
   }
 
-  // Render principal
   return (
     <View style={commonStyles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
-      {/* Header com navegação completa */}
+      {/* Header */}
       <View style={scannerStyles.header}>
         <TouchableOpacity
           style={scannerStyles.backBtn}
           onPress={handleGoBack}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
         >
-          <Text style={scannerStyles.backBtnText}>←</Text>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
         <View style={scannerStyles.headerCenter}>
@@ -258,61 +359,59 @@ export const ScannerScreen = () => {
         </View>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity style={scannerStyles.homeBtn} onPress={handleGoToHome}>
-            <Text style={scannerStyles.homeBtnText}>🏠</Text>
+          <TouchableOpacity
+            style={scannerStyles.homeBtn}
+            onPress={handleGoToHome}
+            accessibilityRole="button"
+            accessibilityLabel="Início"
+          >
+            <Ionicons name="home-outline" size={22} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             style={scannerStyles.finishBtn}
-            onPress={() =>
+            onPress={() => {
+              if (!inventory) return;
               navigation.navigate('InventoryDetail', {
                 inventoryId: inventory.metadata.id,
                 inventoryName: inventory.metadata.name,
-              })
-            }
+              });
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Concluir escaneamento"
           >
             <Text style={scannerStyles.finishBtnText}>Concluir</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={scannerStyles.progressSection}>
-        <View style={scannerStyles.progressRow}>
-          <Text style={scannerStyles.progressLabel}>Progresso</Text>
-          <Text style={scannerStyles.progressCount}>
-            {progress.scanned}
-            <Text style={scannerStyles.progressTotal}>/{progress.total}</Text>
-          </Text>
-        </View>
+      {/* Barra de progresso */}
+      <View style={scannerStyles.progressRow}>
         <View style={scannerStyles.progressTrack}>
           <View
             style={[
               scannerStyles.progressFill,
-              { width: `${progress.percentage}%` },
-              progress.percentage === 100 && scannerStyles.progressFillComplete,
+              { width: `${progress.percentage}%` as `${number}%` },
             ]}
           />
         </View>
-        <Text style={scannerStyles.progressPct}>{progress.percentage}%</Text>
+        <Text style={scannerStyles.progressLabel}>
+          {progress.scanned}/{progress.total} ({progress.percentage}%)
+        </Text>
       </View>
 
-      <View style={scannerStyles.alertsContainer} pointerEvents="none">
-        {alerts.map((alert) => (
-          <View
-            key={alert.id}
-            style={[scannerStyles.alertBanner, scannerStyles[`alert_${alert.type}`]]}
-          >
-            <Text style={scannerStyles.alertText}>{alert.message}</Text>
-          </View>
-        ))}
-      </View>
-
+      {/* Tabs */}
       <View style={scannerStyles.tabs}>
         <TouchableOpacity
           style={[scannerStyles.tab, mode === 'camera' && scannerStyles.tabActive]}
           onPress={() => setMode('camera')}
         >
+          <Ionicons
+            name="camera-outline"
+            size={18}
+            color={mode === 'camera' ? colors.accent : colors.textDim}
+          />
           <Text style={[scannerStyles.tabText, mode === 'camera' && scannerStyles.tabTextActive]}>
-            📷 Câmera
+            Câmera
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -322,17 +421,22 @@ export const ScannerScreen = () => {
             setTimeout(() => manualInputRef.current?.focus(), 200);
           }}
         >
+          <Ionicons
+            name="keypad-outline"
+            size={18}
+            color={mode === 'manual' ? colors.accent : colors.textDim}
+          />
           <Text style={[scannerStyles.tabText, mode === 'manual' && scannerStyles.tabTextActive]}>
-            ⌨️ Manual
+            Manual
           </Text>
         </TouchableOpacity>
       </View>
 
+      {/* Área Principal (Câmera ou Manual) */}
       <View style={scannerStyles.mainArea}>
         {mode === 'camera' ? (
           <CameraArea
             permission={permission}
-            isCameraActive={isCameraActive}
             onRequestPermission={requestPermission}
             onCodeScanned={handleCodeScanned}
           />
@@ -346,6 +450,7 @@ export const ScannerScreen = () => {
         )}
       </View>
 
+      {/* Card do último item escaneado */}
       {lastScanned && (
         <Animated.View
           style={[
@@ -356,24 +461,48 @@ export const ScannerScreen = () => {
                 {
                   translateY: lastItemAnim.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [20, 0],
+                    outputRange: [16, 0],
                   }),
                 },
               ],
             },
           ]}
         >
-          <Text style={scannerStyles.lastScannedLabel}>Último escaneado</Text>
+          <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+          <View style={{ marginLeft: 8, flex: 1 }}>
+            <Text style={scannerStyles.lastScannedLabel}>Último escaneado</Text>
+            <Text style={scannerStyles.lastScannedCode} numberOfLines={1}>
+              {lastScanned.description || lastScanned.code}
+            </Text>
+          </View>
           <Text style={scannerStyles.lastScannedCode}>{lastScanned.code}</Text>
-          <Text style={scannerStyles.lastScannedDesc} numberOfLines={1}>
-            {lastScanned.description}
-          </Text>
-          {lastScanned.location ? (
-            <Text style={scannerStyles.lastScannedMeta}>📍 {lastScanned.location}</Text>
-          ) : null}
         </Animated.View>
       )}
 
+      {/* Alertas Flutuantes */}
+      <View style={scannerStyles.alertsContainer}>
+        {alerts.map((alert) => (
+          <Animated.View
+            key={alert.id}
+            style={[scannerStyles.alertBanner, scannerStyles[`alert_${alert.type}`]]}
+          >
+            <Ionicons
+              name={
+                alert.type === 'success'
+                  ? 'checkmark-circle'
+                  : alert.type === 'error'
+                    ? 'alert-circle'
+                    : 'warning-outline'
+              }
+              size={20}
+              color="#fff"
+            />
+            <Text style={scannerStyles.alertText}>{alert.message}</Text>
+          </Animated.View>
+        ))}
+      </View>
+
+      {/* Modal de Confirmação */}
       <ConfirmModal
         visible={isConfirmVisible}
         item={pendingItem}
@@ -384,62 +513,68 @@ export const ScannerScreen = () => {
   );
 };
 
-// Subcomponentes usando scannerStyles
+// ─── Subcomponentes
 
 interface CameraAreaProps {
   permission: { granted: boolean } | null;
-  isCameraActive: boolean;
   onRequestPermission: () => void;
   onCodeScanned: (code: string) => void;
 }
 
-const CameraArea = ({
-  permission,
-  isCameraActive,
-  onRequestPermission,
-  onCodeScanned,
-}: CameraAreaProps) => {
-  if (!permission) {
+const CameraArea = React.memo(
+  ({ permission, onRequestPermission, onCodeScanned }: CameraAreaProps) => {
+    if (!permission) {
+      return (
+        <View style={scannerStyles.cameraPlaceholder}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={scannerStyles.cameraPlaceholderText}>Carregando câmera…</Text>
+        </View>
+      );
+    }
+    if (!permission.granted) {
+      return (
+        <View style={scannerStyles.cameraPlaceholder}>
+          <Ionicons name="lock-closed-outline" size={48} color={colors.textDim} />
+          <Text style={scannerStyles.cameraPlaceholderText}>Permissão de câmera necessária</Text>
+          <TouchableOpacity style={scannerStyles.permissionBtn} onPress={onRequestPermission}>
+            <Text style={scannerStyles.permissionBtnText}>Conceder permissão</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
     return (
-      <View style={scannerStyles.cameraPlaceholder}>
-        <Text style={scannerStyles.cameraPlaceholderText}>Carregando câmera…</Text>
-      </View>
-    );
-  }
-  if (!permission.granted) {
-    return (
-      <View style={scannerStyles.cameraPlaceholder}>
-        <Text style={scannerStyles.cameraPlaceholderIcon}>🔒</Text>
-        <Text style={scannerStyles.cameraPlaceholderText}>Permissão de câmera necessária</Text>
-        <TouchableOpacity style={scannerStyles.permissionBtn} onPress={onRequestPermission}>
-          <Text style={scannerStyles.permissionBtnText}>Conceder permissão</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-  return (
-    <View style={scannerStyles.cameraWrapper}>
-      {isCameraActive && (
+      <View style={scannerStyles.cameraWrapper}>
         <CameraView
           style={{ flex: 1 }}
           facing="back"
           barcodeScannerSettings={{
-            barcodeTypes: ['code128', 'code39', 'ean13', 'ean8', 'qr', 'pdf417', 'itf14'],
+            barcodeTypes: [
+              'code128',
+              'code39',
+              'ean13',
+              'ean8',
+              'qr',
+              'pdf417',
+              'itf14',
+              'upc_a',
+              'upc_e',
+              'codabar',
+            ],
           }}
           onBarcodeScanned={({ data }) => onCodeScanned(data)}
         />
-      )}
-      <View style={scannerStyles.viewfinder}>
-        <View style={[scannerStyles.corner, scannerStyles.cornerTL]} />
-        <View style={[scannerStyles.corner, scannerStyles.cornerTR]} />
-        <View style={[scannerStyles.corner, scannerStyles.cornerBL]} />
-        <View style={[scannerStyles.corner, scannerStyles.cornerBR]} />
-        <View style={scannerStyles.scanLine} />
+        <View style={scannerStyles.viewfinder}>
+          <View style={[scannerStyles.corner, scannerStyles.cornerTL]} />
+          <View style={[scannerStyles.corner, scannerStyles.cornerTR]} />
+          <View style={[scannerStyles.corner, scannerStyles.cornerBL]} />
+          <View style={[scannerStyles.corner, scannerStyles.cornerBR]} />
+          <View style={scannerStyles.scanLine} />
+        </View>
+        <Text style={scannerStyles.cameraHint}>Aponte para o código de barras do item</Text>
       </View>
-      <Text style={scannerStyles.cameraHint}>Aponte para o código de barras do item</Text>
-    </View>
-  );
-};
+    );
+  }
+);
 
 interface ManualAreaProps {
   value: string;
@@ -448,12 +583,12 @@ interface ManualAreaProps {
   inputRef: React.RefObject<TextInput | null>;
 }
 
-const ManualArea = ({ value, onChange, onSubmit, inputRef }: ManualAreaProps) => (
+const ManualArea = React.memo(({ value, onChange, onSubmit, inputRef }: ManualAreaProps) => (
   <KeyboardAvoidingView
     style={scannerStyles.manualArea}
     behavior={Platform.OS === 'ios' ? 'padding' : undefined}
   >
-    <Text style={scannerStyles.manualIcon}>🔢</Text>
+    <Ionicons name="finger-print-outline" size={48} color={colors.textDim} />
     <Text style={scannerStyles.manualTitle}>Código do patrimônio</Text>
     <Text style={scannerStyles.manualDesc}>
       Digite o código exatamente como consta no inventário
@@ -475,10 +610,11 @@ const ManualArea = ({ value, onChange, onSubmit, inputRef }: ManualAreaProps) =>
       onPress={onSubmit}
       disabled={!value.trim()}
     >
-      <Text style={scannerStyles.manualSubmitText}>Buscar item →</Text>
+      <Text style={scannerStyles.manualSubmitText}>Buscar item</Text>
+      <Ionicons name="arrow-forward" size={20} color="#000" style={{ marginLeft: 4 }} />
     </TouchableOpacity>
   </KeyboardAvoidingView>
-);
+));
 
 interface ConfirmModalProps {
   visible: boolean;
@@ -487,66 +623,81 @@ interface ConfirmModalProps {
   onCancel: () => void;
 }
 
-const ConfirmModal = ({ visible, item, onConfirm, onCancel }: ConfirmModalProps) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-    <View style={scannerStyles.modalOverlay}>
-      <View style={scannerStyles.modalSheet}>
-        <View style={scannerStyles.modalHandle} />
-        <Text style={scannerStyles.modalTitle}>Confirmar item</Text>
-        <Text style={scannerStyles.modalSubtitle}>
-          Verifique os dados antes de confirmar o scan
-        </Text>
-        {item && (
-          <ScrollView
-            style={scannerStyles.modalDetails}
-            contentContainerStyle={scannerStyles.modalDetailsContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <DetailRow icon="🏷️" label="Código" value={item.code} highlight />
-            {item.description ? (
-              <DetailRow icon="📦" label="Descrição" value={item.description} />
-            ) : null}
-            {item.location ? (
-              <DetailRow icon="📍" label="Localização" value={item.location} />
-            ) : null}
-            {item.department ? (
-              <DetailRow icon="🏢" label="Departamento" value={item.department} />
-            ) : null}
-            {item.status ? <DetailRow icon="📋" label="Status" value={item.status} /> : null}
-            {item.value ? <DetailRow icon="💰" label="Valor" value={`R$ ${item.value}`} /> : null}
-          </ScrollView>
-        )}
-        <View style={scannerStyles.modalActions}>
-          <TouchableOpacity style={scannerStyles.cancelBtn} onPress={onCancel}>
-            <Text style={scannerStyles.cancelBtnText}>Cancelar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={scannerStyles.confirmBtn} onPress={onConfirm}>
-            <Text style={scannerStyles.confirmBtnText}>✓ Confirmar</Text>
-          </TouchableOpacity>
+const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: ConfirmModalProps) => {
+  const customFieldsEntries = item?.customFields ? Object.entries(item.customFields) : [];
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
+      <View style={scannerStyles.modalOverlay}>
+        <View style={scannerStyles.modalSheet}>
+          <View style={scannerStyles.modalHandle} />
+          <Text style={scannerStyles.modalTitle}>Confirmar item</Text>
+          <Text style={scannerStyles.modalSubtitle}>
+            Verifique os dados antes de confirmar o scan
+          </Text>
+          {item && (
+            <ScrollView
+              style={scannerStyles.modalDetails}
+              contentContainerStyle={scannerStyles.modalDetailsContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <DetailRow icon="pricetag-outline" label="Código" value={item.code} highlight />
+              {item.description ? (
+                <DetailRow icon="cube-outline" label="Descrição" value={item.description} />
+              ) : null}
+              {item.location ? (
+                <DetailRow icon="location-outline" label="Localização" value={item.location} />
+              ) : null}
+              {item.value ? (
+                <DetailRow
+                  icon="cash-outline"
+                  label="Valor"
+                  value={new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  }).format(item.value)}
+                />
+              ) : null}
+              {customFieldsEntries.map(([key, value]) => (
+                <DetailRow key={key} icon="star-outline" label={key} value={value} />
+              ))}
+            </ScrollView>
+          )}
+          <View style={scannerStyles.modalActions}>
+            <TouchableOpacity style={scannerStyles.cancelBtn} onPress={onCancel}>
+              <Text style={scannerStyles.cancelBtnText}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={scannerStyles.confirmBtn} onPress={onConfirm}>
+              <Ionicons name="checkmark-circle" size={20} color="#000" />
+              <Text style={scannerStyles.confirmBtnText}>Confirmar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+});
 
-const DetailRow = ({
-  icon,
-  label,
-  value,
-  highlight,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) => (
-  <View style={scannerStyles.detailRow}>
-    <Text style={scannerStyles.detailIcon}>{icon}</Text>
-    <View style={scannerStyles.detailContent}>
-      <Text style={scannerStyles.detailLabel}>{label}</Text>
-      <Text style={[scannerStyles.detailValue, highlight && scannerStyles.detailValueHighlight]}>
-        {value}
-      </Text>
+const DetailRow = React.memo(
+  ({
+    icon,
+    label,
+    value,
+    highlight,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    value: string;
+    highlight?: boolean;
+  }) => (
+    <View style={scannerStyles.detailRow}>
+      <Ionicons name={icon} size={20} color={highlight ? colors.accent : colors.textDim} />
+      <View style={scannerStyles.detailContent}>
+        <Text style={scannerStyles.detailLabel}>{label}</Text>
+        <Text style={[scannerStyles.detailValue, highlight && scannerStyles.detailValueHighlight]}>
+          {value}
+        </Text>
+      </View>
     </View>
-  </View>
+  )
 );

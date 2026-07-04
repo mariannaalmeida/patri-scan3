@@ -68,18 +68,23 @@ export interface PieChartOptions {
 }
 
 export class ChartService {
-  // ─── Gráfico de pizza ───────────────────────────────────────────────────────
+  //  Gráfico de pizza
   static buildPieChart(opts: PieChartOptions): string {
-    const { found, pending } = opts;
+    const { found, pending = 0 } = opts;
     const size = opts.size ?? 200;
-    const total = found + pending;
+
+    // O total usado para renderizar o círculo precisa incluir TUDO que foi mapeado
+    const totalRenderizado = found + pending;
+
+    // Mas o percentual concluído continua baseado na meta original do CSV (para não passar de 100%)
+    const metaOriginal = found + pending;
 
     const cx = size / 2;
-    const cy = size * 0.42; // ✅ Movido levemente para cima para não colidir com a legenda
-    const r = size * 0.35; // ✅ Raio levemente menor
+    const cy = size * 0.42;
+    const r = size * 0.35;
     const innerR = size * 0.2;
 
-    if (total === 0) {
+    if (totalRenderizado === 0) {
       return `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
         <circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="1"/>
         <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central"
@@ -87,43 +92,49 @@ export class ChartService {
       </svg>`;
     }
 
-    const foundAngle = total > 0 ? (found / total) * 360 : 0;
+    // Calcula os ângulos das três fatias (Found, Pending
+    const foundAngle = (found / totalRenderizado) * 360;
+    const pendingAngle = (pending / totalRenderizado) * 360;
 
-    // ✅ Proteção: Só gera o path se houver itens encontrados (evita glitch de 0 graus)
+    // Constrói os Paths do SVG
+    // 1. Encontrados (Verde)
     const foundPath =
-      found === total
+      found === totalRenderizado
         ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.found}"/>`
         : found > 0
           ? `<path d="${pieSlicePath(cx, cy, r, 0, foundAngle)}" fill="${C.found}"/>`
           : '';
 
+    // 2. Pendentes (Laranja/Warn)
     const pendingPath =
-      pending === total
+      pending === totalRenderizado
         ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="1"/>`
         : pending > 0
-          ? `<path d="${pieSlicePath(cx, cy, r, foundAngle, 360)}" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="0.5"/>`
+          ? `<path d="${pieSlicePath(cx, cy, r, foundAngle, foundAngle + pendingAngle)}" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="0.5"/>`
           : '';
 
-    const pct = total > 0 ? Math.round((found / total) * 100) : 0;
+    // O percentual no centro do gráfico (Baseado na Meta Original)
+    const pct = metaOriginal > 0 ? Math.min(Math.round((found / metaOriginal) * 100), 100) : 0;
 
+    // SVG Final com a Legenda Atualizada
     return `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
-  ${pendingPath}
   ${foundPath}
+  ${pendingPath}
   <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="${C.bg}"/>
   <text x="${cx}" y="${cy - 8}" text-anchor="middle" dominant-baseline="central"
     font-size="22" font-weight="800" fill="${C.found}" font-family="sans-serif">${pct}%</text>
   <text x="${cx}" y="${cy + 14}" text-anchor="middle" dominant-baseline="central"
     font-size="10" fill="${C.dim}" font-family="sans-serif">concluído</text>
-  
-  <rect x="10" y="${size - 36}" width="10" height="10" rx="2" fill="${C.found}"/>
-  <text x="24" y="${size - 29}" font-size="10" fill="${C.text}" font-family="sans-serif">Encontrados (${found})</text>
-  
-  <rect x="10" y="${size - 20}" width="10" height="10" rx="2" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="1"/>
-  <text x="24" y="${size - 13}" font-size="10" fill="${C.dim}" font-family="sans-serif">Pendentes (${pending})</text>
+
+  <rect x="10" y="${size - 44}" width="10" height="10" rx="2" fill="${C.found}"/>
+  <text x="24" y="${size - 37}" font-size="10" fill="${C.text}" font-family="sans-serif">Encontrados (${found})</text>
+
+  <rect x="10" y="${size - 28}" width="10" height="10" rx="2" fill="${C.warn}" stroke="${C.pendingStroke}" stroke-width="1"/>
+  <text x="24" y="${size - 21}" font-size="10" fill="${C.dim}" font-family="sans-serif">Pendentes (${pending})</text>
+
 </svg>`;
   }
-
-  // ─── Linha do tempo ─────────────────────────────────────────────────────────
+  // ─── Linha do tempo
   static buildTimelineChart(events: ScanEvent[], width = 320, height = 120): string {
     if (events.length === 0) {
       return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -147,7 +158,7 @@ export class ChartService {
 
     const polyline = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
 
-    // ✅ Uso do Set para evitar duplicar labels em inventários muito curtos
+    //  Uso do Set para evitar duplicar labels em inventários muito curtos
     const yLabels = [...new Set([0, Math.round(maxCount / 2), maxCount])];
     const xLabels = [...new Set([0, Math.round(maxMin / 2), maxMin])];
 
