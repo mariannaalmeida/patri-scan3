@@ -64,18 +64,17 @@ function pieSlicePath(
 export interface PieChartOptions {
   found: number;
   pending: number;
-  unexpected?: number;
   size?: number; // viewBox size (default 200)
 }
 
 export class ChartService {
   //  Gráfico de pizza
   static buildPieChart(opts: PieChartOptions): string {
-    const { found, pending, unexpected = 0 } = opts; // Puxamos o unexpected
+    const { found, pending = 0 } = opts;
     const size = opts.size ?? 200;
 
     // O total usado para renderizar o círculo precisa incluir TUDO que foi mapeado
-    const totalRenderizado = found + pending + unexpected;
+    const totalRenderizado = found + pending;
 
     // Mas o percentual concluído continua baseado na meta original do CSV (para não passar de 100%)
     const metaOriginal = found + pending;
@@ -93,10 +92,9 @@ export class ChartService {
       </svg>`;
     }
 
-    // Calcula os ângulos das três fatias (Found, Pending, Unexpected)
+    // Calcula os ângulos das três fatias (Found, Pending
     const foundAngle = (found / totalRenderizado) * 360;
     const pendingAngle = (pending / totalRenderizado) * 360;
-    const unexpectedAngle = (unexpected / totalRenderizado) * 360;
 
     // Constrói os Paths do SVG
     // 1. Encontrados (Verde)
@@ -107,20 +105,12 @@ export class ChartService {
           ? `<path d="${pieSlicePath(cx, cy, r, 0, foundAngle)}" fill="${C.found}"/>`
           : '';
 
-    // 2. Pendentes (Cinza/Dark)
+    // 2. Pendentes (Laranja/Warn)
     const pendingPath =
       pending === totalRenderizado
         ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="1"/>`
         : pending > 0
           ? `<path d="${pieSlicePath(cx, cy, r, foundAngle, foundAngle + pendingAngle)}" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="0.5"/>`
-          : '';
-
-    // 3. Sobras Físicas (Laranja/Warn)
-    const unexpectedPath =
-      unexpected === totalRenderizado
-        ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.warn}"/>`
-        : unexpected > 0
-          ? `<path d="${pieSlicePath(cx, cy, r, foundAngle + pendingAngle, 360)}" fill="${C.warn}"/>`
           : '';
 
     // O percentual no centro do gráfico (Baseado na Meta Original)
@@ -130,7 +120,6 @@ export class ChartService {
     return `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
   ${foundPath}
   ${pendingPath}
-  ${unexpectedPath}
   <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="${C.bg}"/>
   <text x="${cx}" y="${cy - 8}" text-anchor="middle" dominant-baseline="central"
     font-size="22" font-weight="800" fill="${C.found}" font-family="sans-serif">${pct}%</text>
@@ -140,11 +129,9 @@ export class ChartService {
   <rect x="10" y="${size - 44}" width="10" height="10" rx="2" fill="${C.found}"/>
   <text x="24" y="${size - 37}" font-size="10" fill="${C.text}" font-family="sans-serif">Encontrados (${found})</text>
 
-  <rect x="10" y="${size - 28}" width="10" height="10" rx="2" fill="${C.surface2}" stroke="${C.pendingStroke}" stroke-width="1"/>
+  <rect x="10" y="${size - 28}" width="10" height="10" rx="2" fill="${C.warn}" stroke="${C.pendingStroke}" stroke-width="1"/>
   <text x="24" y="${size - 21}" font-size="10" fill="${C.dim}" font-family="sans-serif">Pendentes (${pending})</text>
 
-  <rect x="10" y="${size - 12}" width="10" height="10" rx="2" fill="${C.warn}"/>
-  <text x="24" y="${size - 5}" font-size="10" fill="${C.dim}" font-family="sans-serif">Não Listados (${unexpected})</text>
 </svg>`;
   }
   // ─── Linha do tempo

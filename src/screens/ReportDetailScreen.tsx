@@ -125,7 +125,6 @@ export const ReportDetailScreen = () => {
         ? ChartService.buildPieChart({
             found: report.overall.found,
             pending: report.overall.pending,
-            unexpected: report.unexpectedItems.length,
             size: 190,
           })
         : '',
