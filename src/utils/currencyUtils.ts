@@ -97,7 +97,11 @@ export function formatBrazilianCurrency(value: number | null | undefined): strin
     return '';
   }
 
-  return brlFormatter.format(value);
+  try {
+    return brlFormatter.format(value);
+  } catch {
+    return `R$ ${value.toFixed(2).replace('.', ',')}`;
+  }
 }
 
 /**

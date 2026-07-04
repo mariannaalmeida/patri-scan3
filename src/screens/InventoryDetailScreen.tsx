@@ -7,6 +7,7 @@ import {
   Alert,
   FlatList,
   RefreshControl,
+  ScrollView,
   StatusBar,
   Text,
   TextInput,
@@ -22,16 +23,18 @@ import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateUtils';
 type DetailRouteProp = RouteProp<RootStackParamList, 'InventoryDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-type FilterTab = 'all' | 'pending' | 'scanned';
+type FilterTab = 'all' | 'pending' | 'scanned' | 'unexpected';
 
-// FIX: Removida a definição local duplicada de isScannedItem.
-// A função já existe em types/types.ts e o comentário original admitia
-// que deveria ser importada. Duas definições idênticas divergem silenciosamente.
+// Tipo unificado para exibição na lista
+type CombinedItem = AssetItem & {
+  isUnexpected?: boolean;
+  scannedAt?: string;
+};
 
 export const InventoryDetailScreen = () => {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<DetailRouteProp>();
-  const { inventoryId, inventoryName: passedName } = route.params;
+  const { inventoryId } = route.params;
 
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -72,13 +75,37 @@ export const InventoryDetailScreen = () => {
     [inventory]
   );
 
+  // ─── Consolidação dos Dados (Merge) ──────────────────────────
+  const combinedItems = useMemo<CombinedItem[]>(() => {
+    if (!inventory) return [];
+
+    const regularItems: CombinedItem[] = inventory.items.map((item) => ({
+      ...item,
+      isUnexpected: false,
+    }));
+
+    const unexpectedItems: CombinedItem[] = (inventory.unexpectedItems || []).map((item) => ({
+      ...item,
+      isUnexpected: true,
+      found: true,
+      description: item.description || '',
+      location: item.location || '',
+      scanDate: item.scannedAt,
+    })) as CombinedItem[];
+
+    return [...regularItems, ...unexpectedItems];
+  }, [inventory]);
+
+  const unexpectedCount = inventory?.unexpectedItems?.length || 0;
+
   // ─── Itens filtrados e pesquisados ───────────────────────────
   const filteredItems = useMemo(() => {
     if (!inventory) return [];
-    let result = inventory.items;
+    let result: CombinedItem[] = combinedItems;
 
-    if (filter === 'pending') result = result.filter((i) => !i.found);
-    if (filter === 'scanned') result = result.filter((i) => i.found);
+    if (filter === 'pending') result = result.filter((i) => !i.found && !i.isUnexpected);
+    if (filter === 'scanned') result = result.filter((i) => i.found && !i.isUnexpected);
+    if (filter === 'unexpected') result = result.filter((i) => i.isUnexpected);
 
     if (search.trim()) {
       const q = search.toLowerCase().trim();
@@ -95,7 +122,7 @@ export const InventoryDetailScreen = () => {
       });
     }
     return result;
-  }, [inventory, filter, search]);
+  }, [combinedItems, filter, search]);
 
   // ─── Ações de navegação e reset ──────────────────────────────
   const handleViewReport = useCallback(() => {
@@ -108,40 +135,22 @@ export const InventoryDetailScreen = () => {
 
   const handleStartScan = useCallback(() => {
     if (!inventory) return;
-    if (progress?.remaining === 0) {
-      Alert.alert(
-        'Inventário completo',
-        'Todos os itens já foram escaneados. Deseja escanear novamente?',
-        [
-          { text: 'Não', style: 'cancel' },
-          {
-            text: 'Sim',
-            onPress: () => navigation.navigate('Scanner', { inventoryId: inventory.metadata.id }),
-          },
-        ]
-      );
-      return;
-    }
     navigation.navigate('Scanner', { inventoryId: inventory.metadata.id });
-  }, [inventory, progress, navigation]);
+  }, [inventory, navigation]);
 
   const handleResetInventory = useCallback(() => {
     if (!inventory) return;
     Alert.alert(
       'Resetar inventário',
-      'Isso marcará todos os itens como não escaneados. Deseja continuar?',
+      'Isso marcará todos os itens como não escaneados. Os itens não listados NÃO serão apagados. Deseja continuar?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Resetar',
           style: 'destructive',
           onPress: async () => {
-            // FIX: Antes fazia N leituras + N escritas em loop (uma por item escaneado).
-            // Agora modifica todos os itens em memória de uma vez e salva apenas uma vez,
-            // reduzindo de O(n) operações de disco para O(1).
             const resetItems = inventory.items.map((item) => {
               if (!item.found) return item;
-              // Remove scanDate se existir (união discriminada: found:false não tem scanDate)
               const { scanDate: _, ...base } = item as AssetItem & { scanDate?: string };
               return { ...base, found: false as const };
             });
@@ -152,14 +161,11 @@ export const InventoryDetailScreen = () => {
             };
 
             const saveResult = await StorageService.saveInventory(updatedInventory);
-
             if (!saveResult.ok) {
               Alert.alert('Erro', 'Não foi possível resetar completamente o inventário.');
               return;
             }
 
-            // FIX: setInventory direto com o objeto já em memória, sem segunda leitura
-            // do disco. Alert só aparece após o estado ser atualizado.
             setInventory(updatedInventory);
             Alert.alert('Sucesso', 'Inventário resetado com sucesso.');
           },
@@ -172,7 +178,7 @@ export const InventoryDetailScreen = () => {
     if (!inventory) return;
     Alert.alert(
       'Excluir Inventário',
-      `Tem certeza que deseja excluir "${inventory.metadata.name}"? Esta ação apagará todos os dados permanentemente.`,
+      `Tem certeza que deseja excluir "${inventory.metadata.name}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -193,8 +199,6 @@ export const InventoryDetailScreen = () => {
 
   const handleGoBack = () => navigation.goBack();
 
-  // FIX: onRefresh agora é async com await, garantindo que isRefreshing seja
-  // resetado pelo finally de loadInventory antes de encerrar o callback
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await loadInventory(true);
@@ -213,9 +217,6 @@ export const InventoryDetailScreen = () => {
 
   if (!inventory) return null;
 
-  // FIX: isComplete derivado de progress após os guards, com fallback explícito false.
-  // Antes usava progress?.percentage === 100 fora do escopo de certeza de progress,
-  // o que retornaria false silenciosamente se progress fosse null por razão inesperada.
   const isComplete = progress !== null && progress.percentage === 100;
 
   // ─── Render principal ────────────────────────────────────────
@@ -243,17 +244,12 @@ export const InventoryDetailScreen = () => {
         </View>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* Botão de Relatório */}
           <TouchableOpacity onPress={handleViewReport} style={inventoryDetailStyles.reportBtn}>
             <Ionicons name="bar-chart-outline" size={20} color={colors.accent} />
           </TouchableOpacity>
-
-          {/* Botão de Reset */}
           <TouchableOpacity onPress={handleResetInventory} style={inventoryDetailStyles.resetBtn}>
             <Ionicons name="refresh-outline" size={20} color={colors.warning} />
           </TouchableOpacity>
-
-          {/* Botão de Lixeira */}
           <TouchableOpacity
             onPress={handleDeleteInventory}
             style={[
@@ -324,46 +320,61 @@ export const InventoryDetailScreen = () => {
       </View>
 
       {/* Filtros */}
-      <View style={inventoryDetailStyles.filterTabs}>
-        {[
-          { key: 'all', label: `Todos (${inventory.items.length})` },
-          { key: 'pending', label: `Pendentes (${progress?.remaining ?? 0})` },
-          { key: 'scanned', label: `Escaneados (${progress?.scanned ?? 0})` },
-        ].map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[
-              inventoryDetailStyles.filterTab,
-              filter === tab.key && inventoryDetailStyles.filterTabActive,
-            ]}
-            onPress={() => setFilter(tab.key as FilterTab)}
-          >
-            <Text
+      {/* Filtros */}
+      <View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={inventoryDetailStyles.filterTabs}
+          // Uma leve margem ou padding pode ser necessária dependendo do seu theme.ts
+          style={{ flexGrow: 0 }}
+        >
+          {[
+            { key: 'all', label: `Todos (${combinedItems.length})` },
+            { key: 'pending', label: `Pendentes (${progress?.remaining ?? 0})` },
+            { key: 'scanned', label: `Escaneados (${progress?.scanned ?? 0})` },
+            { key: 'unexpected', label: `Não Listados (${unexpectedCount})` },
+          ].map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
               style={[
-                inventoryDetailStyles.filterTabText,
-                filter === tab.key && inventoryDetailStyles.filterTabTextActive,
+                inventoryDetailStyles.filterTab,
+                filter === tab.key && inventoryDetailStyles.filterTabActive,
               ]}
+              onPress={() => setFilter(tab.key as FilterTab)}
             >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  inventoryDetailStyles.filterTabText,
+                  filter === tab.key && inventoryDetailStyles.filterTabTextActive,
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
-
       {/* Lista de itens */}
       <FlatList
         data={filteredItems}
-        // FIX: key usa apenas item.code — único dentro de um inventário por definição.
-        // O index como parte da key causava reuso incorreto de componentes ao filtrar/ordenar.
-        keyExtractor={(item) => item.code}
+        keyExtractor={(item) => `${item.isUnexpected ? 'unexp-' : ''}${item.code}`}
         renderItem={({ item }) => (
           <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('ItemDetail', {
-                inventoryId: inventory.metadata.id,
-                itemCode: item.code,
-              })
-            }
+            onPress={() => {
+              if (item.isUnexpected) {
+                navigation.navigate('ItemDetail', {
+                  inventoryId: inventory.metadata.id,
+                  itemCode: item.code,
+                  isUnexpected: true,
+                });
+              } else {
+                navigation.navigate('ItemDetail', {
+                  inventoryId: inventory.metadata.id,
+                  itemCode: item.code,
+                });
+              }
+            }}
             activeOpacity={0.7}
           >
             <ItemRow item={item} />
@@ -389,17 +400,27 @@ export const InventoryDetailScreen = () => {
                   ? 'search-outline'
                   : filter === 'pending'
                     ? 'checkmark-circle-outline'
-                    : 'cube-outline'
+                    : filter === 'unexpected'
+                      ? 'alert-circle-outline'
+                      : 'cube-outline'
               }
               size={48}
-              color={filter === 'pending' && !search ? colors.success : colors.textDim}
+              color={
+                filter === 'pending' && !search
+                  ? colors.success
+                  : filter === 'unexpected'
+                    ? colors.warning
+                    : colors.textDim
+              }
             />
             <Text style={inventoryDetailStyles.emptyText}>
               {search
                 ? 'Nenhum item encontrado para esta busca.'
                 : filter === 'pending'
                   ? 'Nenhum item pendente. Tudo escaneado!'
-                  : 'Nenhum item escaneado ainda.'}
+                  : filter === 'unexpected'
+                    ? 'Nenhum item não listado registrado.'
+                    : 'Nenhum item escaneado ainda.'}
             </Text>
           </View>
         }
@@ -454,27 +475,51 @@ const StatCard = React.memo(({ label, value, variant = 'default' }: StatCardProp
 });
 
 interface ItemRowProps {
-  item: AssetItem;
+  item: CombinedItem;
 }
 
 const ItemRow = React.memo(({ item }: ItemRowProps) => {
-  const scanned = isScannedItem(item);
-  const scanTime = scanned ? formatDisplayDateTime(item.scanDate) : null;
+  const isUnexpected = item.isUnexpected;
+  const scanned = isUnexpected || isScannedItem(item as AssetItem);
+  const rawScanTime = isUnexpected
+    ? item.scannedAt
+    : (item as AssetItem & { scanDate?: string }).scanDate;
+  const scanTime = scanned && rawScanTime ? formatDisplayDateTime(rawScanTime) : null;
   const customFieldsEntries = item.customFields ? Object.entries(item.customFields) : [];
 
   return (
-    <View style={[inventoryDetailStyles.itemRow, scanned && inventoryDetailStyles.itemRowScanned]}>
+    <View
+      style={[
+        inventoryDetailStyles.itemRow,
+        scanned && inventoryDetailStyles.itemRowScanned,
+        isUnexpected && { borderColor: colors.warning, borderWidth: 1 },
+      ]}
+    >
       <View
         style={[
           inventoryDetailStyles.itemIndicator,
           scanned && inventoryDetailStyles.itemIndicatorScanned,
+          isUnexpected && { backgroundColor: colors.warning },
         ]}
       />
 
       <View style={inventoryDetailStyles.itemContent}>
         <View style={inventoryDetailStyles.itemHeader}>
           <Text style={inventoryDetailStyles.itemCode}>{item.code}</Text>
-          {scanned ? (
+          {isUnexpected ? (
+            <View
+              style={[
+                inventoryDetailStyles.scannedBadge,
+                { backgroundColor: colors.warning + '20' },
+              ]}
+            >
+              <Ionicons name="alert-circle" size={16} color={colors.warning} />
+              <Text style={[inventoryDetailStyles.scannedBadgeText, { color: colors.warning }]}>
+                {' '}
+                Não Listado
+              </Text>
+            </View>
+          ) : scanned ? (
             <View style={inventoryDetailStyles.scannedBadge}>
               <Ionicons name="checkmark-circle" size={16} color={colors.success} />
               <Text style={inventoryDetailStyles.scannedBadgeText}> Escaneado</Text>
@@ -505,7 +550,6 @@ const ItemRow = React.memo(({ item }: ItemRowProps) => {
 
 interface ItemMetaProps {
   location?: string;
-
   scanTime: string | null;
 }
 
@@ -517,7 +561,6 @@ const ItemMeta = React.memo(({ location, scanTime }: ItemMetaProps) => (
         <Text style={inventoryDetailStyles.itemMetaText}> {location}</Text>
       </View>
     )}
-
     {scanTime && (
       <View style={inventoryDetailStyles.metaItem}>
         <Ionicons name="time-outline" size={14} color={colors.textDim} />

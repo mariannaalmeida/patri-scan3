@@ -5,6 +5,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   Text,
@@ -21,14 +23,13 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type Step = 'initial' | 'mapping' | 'validation' | 'processing';
 
 // Campos disponíveis para mapeamento
-const MAPPABLE_FIELDS: MappableField[] = ['code', 'description', 'location', 'status', 'value'];
+const MAPPABLE_FIELDS: MappableField[] = ['code', 'description', 'location', 'value'];
 
 // Rótulos dos campos (inclui suporte a campos extras via fallback)
 const FIELD_LABELS: Record<string, string> = {
   code: 'Código',
   description: 'Descrição',
   location: 'Localização',
-  status: 'Status',
   value: 'Valor',
 };
 
@@ -39,6 +40,8 @@ export const ImportInventoryScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const [currentStep, setCurrentStep] = useState<Step>('initial');
   const [inventoryName, setInventoryName] = useState('');
+  const [inventoryLocation, setInventoryLocation] = useState('');
+  const [inventoryYear, setInventoryYear] = useState('');
   const [csvData, setCsvData] = useState<Record<string, string>[]>([]);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [columnMapping, setColumnMapping] = useState<ColumnMapping[]>([]);
@@ -175,10 +178,19 @@ export const ImportInventoryScreen = () => {
       }
 
       setProgress(60);
-      const items = ImportService.convertToAssetItems(csvData, finalMapping);
+      const items = ImportService.convertToAssetItems(
+        csvData,
+        finalMapping,
+        inventoryLocation.trim() || undefined
+      );
       setProgress(80);
 
-      const inventoryResult = await ImportService.createInventoryFromCSV(inventoryName, items);
+      const inventoryResult = await ImportService.createInventoryFromCSV(
+        inventoryName,
+        items,
+        inventoryLocation.trim() || undefined,
+        inventoryYear.trim() ? Number(inventoryYear.trim()) : undefined
+      );
       setProgress(100);
 
       if (inventoryResult.ok) {
@@ -415,35 +427,68 @@ export const ImportInventoryScreen = () => {
         <Text style={styles.title}>Importar CSV</Text>
         <View style={{ width: 36 }} />
       </View>
-
       {currentStep === 'initial' && (
-        <View style={styles.stepContainer}>
-          <Text style={styles.label}>Nome do Inventário</Text>
-          <TextInput
-            style={styles.input}
-            value={inventoryName}
-            onChangeText={setInventoryName}
-            placeholder="Ex: Inventário 2024"
-            placeholderTextColor={colors.textDim}
-          />
-
-          <TouchableOpacity
-            style={[styles.actionButton, isLoading && styles.buttonDisabled]}
-            onPress={handleSelectFile}
-            disabled={isLoading}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={[
+              styles.stepContainer,
+              { flexGrow: 1, paddingBottom: 120 }, // flexGrow ativa a rolagem quando necessário
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.actionButtonText}>Selecionar Arquivo CSV</Text>
-            )}
-          </TouchableOpacity>
+            <Text style={styles.label}>Nome do Inventário</Text>
+            <TextInput
+              style={styles.input}
+              value={inventoryName}
+              onChangeText={setInventoryName}
+              placeholder="Ex: Inventário 2024"
+              placeholderTextColor={colors.textDim}
+            />
 
-          <Text style={styles.hint}>
-            O arquivo CSV deve conter os dados dos itens patrimoniais. Na próxima etapa você poderá
-            mapear as colunas.
-          </Text>
-        </View>
+            <Text style={styles.label}>Localização do Inventário (opcional)</Text>
+            <TextInput
+              style={styles.input}
+              value={inventoryLocation}
+              onChangeText={setInventoryLocation}
+              placeholder="Ex: Sala 201"
+              placeholderTextColor={colors.textDim}
+            />
+
+            <Text style={styles.label}>Ano de Referência (opcional)</Text>
+            <TextInput
+              style={styles.input}
+              value={inventoryYear}
+              onChangeText={setInventoryYear}
+              placeholder="Ex: 2026"
+              placeholderTextColor={colors.textDim}
+              keyboardType="numeric"
+              maxLength={4}
+            />
+
+            <TouchableOpacity
+              style={[styles.actionButton, isLoading && styles.buttonDisabled, { marginTop: 24 }]}
+              onPress={handleSelectFile}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={styles.actionButtonText}>Selecionar Arquivo CSV</Text>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.hint}>
+              O arquivo CSV deve conter os dados dos itens patrimoniais. Na próxima etapa você
+              poderá mapear as colunas.
+            </Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
       )}
 
       {currentStep === 'mapping' && renderMappingStep()}

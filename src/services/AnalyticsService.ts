@@ -15,7 +15,7 @@ import {
 } from '../types/types';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../utils/dateUtils';
 
-// ─── Tipos de saída
+// ─── Tipos de saída ──────────────────────────────────────────────────────────
 
 export interface OverallStats {
   total: number;
@@ -23,7 +23,7 @@ export interface OverallStats {
   pending: number;
   unexpectedCount: number;
   progressPct: number; // 0-100
-  startedAt: string | null; // ISO — primeiro scan da sessão
+  startedAt: string | null; // ISO — primeiro scan da sessão (inclui sobras)
   completedAt: string | null; // ISO — último scan (se 100%)
   durationMinutes: number | null;
 }
@@ -40,8 +40,9 @@ export interface ScanEvent {
   code: string;
   description: string;
   location: string;
-  scanDate: string; // ISO (só existe para found items)
-  minutesFromStart: number; // delta desde o primeiro scan
+  scanDate: string; // ISO
+  minutesFromStart: number; // delta desde o primeiro scan geral
+  isUnexpected?: boolean; // Flag para UI diferenciar no histórico
 }
 
 export interface InventoryReport {
@@ -54,7 +55,7 @@ export interface InventoryReport {
   unexpectedItems: UnexpectedItem[];
 }
 
-// ─── Serviço
+// Serviço
 
 export class AnalyticsService {
   /**
@@ -62,26 +63,23 @@ export class AnalyticsService {
    * Computa o relatório completo a partir de um Inventory.
    */
   static compute(inventory: Inventory): InventoryReport {
-    // Separa itens encontrados (found === true) e não encontrados
+    // Separa itens originais encontrados e não encontrados
     const foundItems = inventory.items.filter(isScannedItem);
     const notFoundItems = inventory.items.filter((item) => !item.found);
+    const unexpectedItems = inventory.unexpectedItems ?? [];
 
-    const overall = this.computeOverall(
-      inventory,
-      foundItems,
-      inventory.unexpectedItems?.length ?? 0
-    );
-    const scanTimeline = this.computeTimeline(foundItems, overall.startedAt);
+    const overall = this.computeOverall(inventory, foundItems, unexpectedItems);
+
+    const scanTimeline = this.computeTimeline(foundItems, unexpectedItems, overall.startedAt);
 
     return {
       inventoryName: inventory.metadata.name,
       generatedAt: new Date().toISOString(),
       overall,
-
       scanTimeline,
       notFoundItems,
       foundItems,
-      unexpectedItems: inventory.unexpectedItems ?? [],
+      unexpectedItems,
     };
   }
 
@@ -90,24 +88,30 @@ export class AnalyticsService {
   private static computeOverall(
     inventory: Inventory,
     foundItems: ScannedAssetItem[],
-    unexpectedCount: number
+    unexpectedItems: UnexpectedItem[]
   ): OverallStats {
     const total = inventory.items.length;
     const found = foundItems.length;
     const pending = total - found;
+    const unexpectedCount = unexpectedItems.length;
     const progressPct = total > 0 ? Math.round((found / total) * 100) : 0;
 
-    const dates = foundItems.map((i) => new Date(i.scanDate).getTime()).sort((a, b) => a - b);
+    // Extrai e junta as datas de TODOS os escaneamentos (Originais + Sobras)
+    const foundDates = foundItems.map((i) => new Date(i.scanDate).getTime());
+    const unexpectedDates = unexpectedItems.map((i) => new Date(i.scannedAt).getTime());
+    const allDates = [...foundDates, ...unexpectedDates].sort((a, b) => a - b);
 
-    const startedAt = dates.length > 0 ? new Date(dates[0]).toISOString() : null;
+    const startedAt = allDates.length > 0 ? new Date(allDates[0]).toISOString() : null;
+
+    // completedAt reflete a última leitura da sessão SE a lista original atingiu 100%
     const completedAt =
-      progressPct === 100 && dates.length > 0
-        ? new Date(dates[dates.length - 1]).toISOString()
+      progressPct === 100 && allDates.length > 0
+        ? new Date(allDates[allDates.length - 1]).toISOString()
         : null;
 
     const durationMinutes =
-      startedAt && dates.length > 1
-        ? Math.round((dates[dates.length - 1] - dates[0]) / 60000)
+      startedAt && allDates.length > 1
+        ? Math.round((allDates[allDates.length - 1] - allDates[0]) / 60000)
         : null;
 
     return {
@@ -122,7 +126,46 @@ export class AnalyticsService {
     };
   }
 
-  // Agrupamento por campo
+  // ─── Timeline ──────────────────────────────────────────────────────────────
+
+  private static computeTimeline(
+    foundItems: ScannedAssetItem[],
+    unexpectedItems: UnexpectedItem[],
+    startedAt: string | null
+  ): ScanEvent[] {
+    const startMs = startedAt ? new Date(startedAt).getTime() : null;
+
+    // Normaliza os eventos de itens originais
+    const foundEvents = foundItems.map((item) => ({
+      code: item.code,
+      description: item.description ?? '',
+      location: item.location ?? '',
+      scanDate: item.scanDate,
+      isUnexpected: false,
+    }));
+
+    // Normaliza os eventos de sobras físicas (compatibilizando scannedAt -> scanDate)
+    const unexpectedEvents = unexpectedItems.map((item) => ({
+      code: item.code,
+      description: item.description ?? '',
+      location: item.location ?? '',
+      scanDate: item.scannedAt,
+      isUnexpected: true,
+    }));
+
+    // Junta tudo, ordena cronologicamente e calcula o delta em minutos
+    return [...foundEvents, ...unexpectedEvents]
+      .sort((a, b) => new Date(a.scanDate).getTime() - new Date(b.scanDate).getTime())
+      .map((event) => {
+        const scanMs = new Date(event.scanDate).getTime();
+        return {
+          ...event,
+          minutesFromStart: startMs !== null ? Math.round((scanMs - startMs) / 60000) : 0,
+        };
+      });
+  }
+
+  // ─── Agrupamento por campo ─────────────────────────────────────────────────
 
   private static computeByGroup(inventory: Inventory, field: 'location'): GroupStat[] {
     const groups = new Map<string, { total: number; found: number }>();
@@ -132,7 +175,6 @@ export class AnalyticsService {
       const existing = groups.get(key) ?? { total: 0, found: 0 };
       existing.total++;
 
-      // Verificação direta, sem necessidade de Set adicional
       if (item.found) existing.found++;
 
       groups.set(key, existing);
@@ -149,30 +191,7 @@ export class AnalyticsService {
       .sort((a, b) => b.total - a.total);
   }
 
-  // Timeline
-
-  private static computeTimeline(
-    foundItems: (AssetItem & { found: true; scanDate: string })[],
-    startedAt: string | null
-  ): ScanEvent[] {
-    const startMs = startedAt ? new Date(startedAt).getTime() : null;
-
-    return foundItems
-      .slice()
-      .sort((a, b) => new Date(a.scanDate).getTime() - new Date(b.scanDate).getTime())
-      .map((item) => {
-        const scanMs = new Date(item.scanDate).getTime();
-        return {
-          code: item.code,
-          description: item.description ?? '',
-          location: item.location ?? '',
-          scanDate: item.scanDate,
-          minutesFromStart: startMs !== null ? Math.round((scanMs - startMs) / 60000) : 0,
-        };
-      });
-  }
-
-  // ─── Helpers de formatação (wrappers dos utilitários)
+  // ─── Helpers de formatação ─────────────────────────────────────────────────
 
   static formatDate(iso: string): string {
     return formatDisplayDate(iso);

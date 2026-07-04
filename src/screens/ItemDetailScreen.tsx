@@ -35,8 +35,30 @@ export const ItemDetailScreen = () => {
         if (result.ok) {
           const inventory = result.value;
           setInventoryName(inventory.metadata.name);
-          const found = inventory.items.find((i) => i.code === itemCode);
-          setItem(found || null);
+
+          const isUnexpected = route.params?.isUnexpected;
+
+          if (isUnexpected) {
+            // Busca em unexpectedItems
+            const found = inventory.unexpectedItems?.find((i) => i.code === itemCode);
+            if (found) {
+              // Converte para AssetItem compatível com a UI
+              setItem({
+                code: found.code,
+                description: found.description || '',
+                location: found.location || '',
+                found: true,
+                scanDate: found.scannedAt,
+                customFields: found.customFields,
+              } as AssetItem);
+            } else {
+              setItem(null);
+            }
+          } else {
+            // Busca em items (comportamento original)
+            const found = inventory.items.find((i) => i.code === itemCode);
+            setItem(found || null);
+          }
         }
       } catch (error) {
         console.error('Erro ao carregar item:', error);
@@ -45,7 +67,7 @@ export const ItemDetailScreen = () => {
       }
     };
     loadItem();
-  }, [inventoryId, itemCode]);
+  }, [inventoryId, itemCode, route.params?.isUnexpected]);
 
   const handleGoBack = () => navigation.goBack();
 
@@ -97,7 +119,19 @@ export const ItemDetailScreen = () => {
       >
         {/* Status Badge */}
         <View style={itemDetailStyles.statusSection}>
-          {scanned ? (
+          {route.params?.isUnexpected ? (
+            <View
+              style={[
+                itemDetailStyles.statusBadgeScanned,
+                { backgroundColor: colors.warning + '20' },
+              ]}
+            >
+              <Ionicons name="alert-circle" size={24} color={colors.warning} />
+              <Text style={[itemDetailStyles.statusTextScanned, { color: colors.warning }]}>
+                Item Não Listado
+              </Text>
+            </View>
+          ) : scanned ? (
             <View style={itemDetailStyles.statusBadgeScanned}>
               <Ionicons name="checkmark-circle" size={24} color={colors.success} />
               <Text style={itemDetailStyles.statusTextScanned}>Item Escaneado</Text>
@@ -148,15 +182,17 @@ export const ItemDetailScreen = () => {
         {/* Informações do Scan */}
         {scanned && (
           <View style={itemDetailStyles.card}>
-            <Text style={itemDetailStyles.cardTitle}>Dados do Scan</Text>
+            <Text style={itemDetailStyles.cardTitle}>
+              {route.params?.isUnexpected ? 'Dados do Registro' : 'Dados do Scan'}
+            </Text>
             <DetailField
               icon="calendar-outline"
-              label="Data do Scan"
+              label="Data"
               value={formatDisplayDate(item.scanDate)}
             />
             <DetailField
               icon="time-outline"
-              label="Hora do Scan"
+              label="Hora"
               value={formatDisplayTime(item.scanDate)}
             />
           </View>

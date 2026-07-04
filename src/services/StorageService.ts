@@ -29,7 +29,7 @@ export class StorageService {
     return `inv_${timestamp}_${random}`;
   }
 
-  // ------ Constantes privadas
+  // Constantes privadas
 
   private static readonly DEFAULT_SCHEMA: InventorySchema = {
     version: '1.0',
@@ -73,6 +73,18 @@ export class StorageService {
   private static isValidId(id: string): boolean {
     // Previne path traversal e garante formato válido
     return /^inv_\d+_[a-z0-9]+$/.test(id);
+  }
+
+  private static parseFileContent<T>(raw: string, filename: string, inventoryId: string): T {
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      console.error(
+        `[StorageService] Erro ao parsear ${filename} do inventário ${inventoryId}:`,
+        error
+      );
+      throw new Error(`Arquivo ${filename} do inventário ${inventoryId} está corrompido.`);
+    }
   }
 
   // --- Métodos públicos ---
@@ -195,9 +207,7 @@ export class StorageService {
   static async loadInventory(id: string): Promise<Result<Inventory>> {
     return handleServiceError(
       async () => {
-        if (!this.isValidId(id)) {
-          throw new Error(`ID de inventário inválido: ${id}`);
-        }
+        if (!this.isValidId(id)) throw new Error(`ID de inventário inválido: ${id}`);
 
         const dir = this.getInventoryDirectory(id);
         const itemsFile = new File(dir, 'items.json');
@@ -209,24 +219,23 @@ export class StorageService {
           throw new Error(`Arquivos do inventário (ID: ${id}) não encontrados.`);
         }
 
-        //  Lê o schema se existir, senão retorna um JSON de fallback vazio
         const [itemsRaw, metadataRaw, schemaRaw, unexpectedRaw] = await Promise.all([
           itemsFile.text(),
           metadataFile.text(),
-          schemaFile.exists
-            ? schemaFile.text()
-            : Promise.resolve(JSON.stringify(this.DEFAULT_SCHEMA)),
-          unexpectedFile.exists ? unexpectedFile.text() : Promise.resolve('[]'),
+          schemaFile.exists ? schemaFile.text() : JSON.stringify(this.DEFAULT_SCHEMA),
+          unexpectedFile.exists ? unexpectedFile.text() : '[]',
         ]);
 
-        const items = this.safeJSONParse<AssetItem[]>(itemsRaw, []);
-        const metadata = this.safeJSONParseOrThrow<InventoryMetadata>(
-          metadataRaw,
-          `metadados do inventário ID: ${id}`
+        // Usando o novo helper de parse com log detalhado
+        const items = this.parseFileContent<AssetItem[]>(itemsRaw, 'items.json', id);
+        const metadata = this.parseFileContent<InventoryMetadata>(metadataRaw, 'metadata.json', id);
+        const schema = this.parseFileContent<InventorySchema>(schemaRaw, 'schema.json', id);
+        const unexpectedItems = this.parseFileContent<UnexpectedItem[]>(
+          unexpectedRaw,
+          'unexpected.json',
+          id
         );
-        //  Faz o parse do schema de forma segura
-        const schema = this.safeJSONParse<InventorySchema>(schemaRaw, this.DEFAULT_SCHEMA);
-        const unexpectedItems = this.safeJSONParse<UnexpectedItem[]>(unexpectedRaw, []);
+
         return { items, metadata, schema, unexpectedItems };
       },
       'STORAGE_READ_FAILED',
@@ -336,7 +345,7 @@ export class StorageService {
         const loadResult = await this.loadInventory(id);
         if (!loadResult.ok) throw loadResult.error;
 
-        const { items, metadata } = loadResult.value;
+        const { items, metadata, unexpectedItems } = loadResult.value;
 
         const total = metadata.totalItems;
         const scannedCount = items.filter((i) => i.found).length;
@@ -350,6 +359,7 @@ export class StorageService {
         return {
           totalItems: total,
           scannedItems: scannedCount,
+          unexpectedCount: unexpectedItems?.length ?? 0,
           progress: total > 0 ? Math.round((scannedCount / total) * 100) : 0,
           lastModified,
         };
@@ -439,7 +449,6 @@ export class StorageService {
 
   // Configurações
   static readonly DEFAULT_SETTINGS: AppSettings = {
-    soundEnabled: false,
     vibrationEnabled: true,
     flashEnabled: false,
     theme: 'light',

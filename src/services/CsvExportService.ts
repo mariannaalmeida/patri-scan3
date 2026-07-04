@@ -11,9 +11,16 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { InventoryReport } from '../services/AnalyticsService';
-import { AssetItem, InventorySchema, Result, isScannedItem } from '../types/types';
+import { AssetItem, InventorySchema, isScannedItem, Result, UnexpectedItem } from '../types/types';
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
+
+// ─── Tipagem Auxiliar ─────────────────────────────────────────────────────────
+
+// Tipo unificado para o exportador lidar com itens originais e sobras na mesma lista
+type ExportableItem = AssetItem & {
+  isUnexpected?: boolean;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,6 +49,19 @@ function csvRow(fields: (string | number | null | undefined)[]): string {
 function getCustomFieldNames(schema?: InventorySchema): string[] {
   if (!schema || !schema.fields) return [];
   return schema.fields.filter((f) => !f.fixed).map((f) => f.name);
+}
+
+/**
+ * Normaliza a lista de itens não listados para o formato de ExportableItem,
+ * permitindo que a lógica existente de isScannedItem continue funcionando.
+ */
+function normalizeUnexpectedItems(unexpectedItems: UnexpectedItem[]): ExportableItem[] {
+  return unexpectedItems.map((u) => ({
+    ...u,
+    found: true,
+    isUnexpected: true,
+    scanDate: u.scannedAt, // Mapeia o timestamp para o padrão do AssetItem
+  })) as ExportableItem[];
 }
 
 /**
@@ -161,32 +181,51 @@ function sanitizeFileName(name: string): string {
     .substring(0, 50); // Limita tamanho do nome
 }
 
-// ─── Serviço ──────────────────────────────────────────────────────────────────
-
+// Serviço
 export class CSVExportService {
   /**
-   * Exporta todos os itens encontrados com timestamp de scan.
+   * Exporta todos os itens encontrados (originais) e não listados (sobras) com timestamp de scan.
    */
-
   static async exportFound(
     report: InventoryReport,
     schema?: InventorySchema
   ): Promise<Result<void>> {
     return handleServiceError(async () => {
-      if (!report.foundItems.length) {
+      const unexpected = normalizeUnexpectedItems(report.unexpectedItems);
+      const combinedFoundItems = [...report.foundItems, ...unexpected].sort((a, b) =>
+        a.code.localeCompare(b.code)
+      );
+
+      if (!combinedFoundItems.length) {
         throw new Error('Não há itens encontrados para exportar.');
       }
 
-      const { columns, getRow } = resolveColumns(report.foundItems, schema);
+      const { columns, getRow } = resolveColumns(combinedFoundItems, schema);
 
       // Colunas de data/hora são incluídas apenas se houver pelo menos um item escaneado com scanDate
-      const hasScanDate = report.foundItems.some((item) => isScannedItem(item) && item.scanDate);
-      const headerColumns = hasScanDate ? [...columns, 'Data do Scan', 'Hora do Scan'] : columns;
+      const hasScanDate = combinedFoundItems.some(
+        (item) => isScannedItem(item as AssetItem) && (item as any).scanDate
+      );
+
+      // Adiciona 'Situação' para distinguir Encontrado vs Não Listado
+      const headerColumns = [...columns, 'Situação'];
+      if (hasScanDate) {
+        headerColumns.push('Data do Scan', 'Hora do Scan');
+      }
       const header = csvRow(headerColumns);
 
-      const rows = report.foundItems.map((item) => {
-        const scanDateObj = isScannedItem(item) ? new Date(item.scanDate) : null;
-        const row = getRow(item, scanDateObj);
+      const rows = combinedFoundItems.map((item) => {
+        const exportableItem = item as ExportableItem; // Força a tipagem correta
+
+        const scanDateObj =
+          isScannedItem(exportableItem) && exportableItem.scanDate
+            ? new Date(exportableItem.scanDate)
+            : null;
+
+        const row = getRow(exportableItem, scanDateObj);
+
+        row.push(exportableItem.isUnexpected ? 'Não Listado' : 'Encontrado');
+
         if (hasScanDate) {
           row.push(
             scanDateObj ? formatDisplayDate(scanDateObj) : '',
@@ -204,7 +243,6 @@ export class CSVExportService {
   /**
    * Exporta itens NÃO encontrados (pendentes ao final do inventário).
    */
-  
   static async exportPending(
     report: InventoryReport,
     schema?: InventorySchema
@@ -214,6 +252,7 @@ export class CSVExportService {
         throw new Error('Não há itens pendentes para exportar.');
       }
 
+      // Itens pendentes não possuem sobras físicas
       const { columns, getRow } = resolveColumns(report.notFoundItems, schema);
 
       const header = csvRow(columns);
@@ -225,15 +264,15 @@ export class CSVExportService {
   }
 
   /**
-   * Exporta relatório completo: todos os itens + coluna de situação.
+   * Exporta relatório completo: todos os itens (originais + sobras) e coluna de situação.
    */
-
   static async exportFull(
     report: InventoryReport,
     schema?: InventorySchema
   ): Promise<Result<void>> {
     return handleServiceError(async () => {
-      const allItems = [...report.foundItems, ...report.notFoundItems].sort((a, b) =>
+      const unexpected = normalizeUnexpectedItems(report.unexpectedItems);
+      const allItems = [...report.foundItems, ...report.notFoundItems, ...unexpected].sort((a, b) =>
         a.code.localeCompare(b.code)
       );
 
@@ -243,22 +282,36 @@ export class CSVExportService {
 
       const { columns, getRow } = resolveColumns(allItems, schema);
 
-      // Coluna "Situação" sempre presente
       const hasScanDate = allItems.some(
-        (item) => item.found && isScannedItem(item) && item.scanDate
+        (item) => item.found && isScannedItem(item as AssetItem) && (item as any).scanDate
       );
-      const headerColumns = [
-        ...columns,
-        'Situação',
-        ...(hasScanDate ? ['Data do Scan', 'Hora do Scan'] : []),
-      ];
+
+      const headerColumns = [...columns, 'Situação'];
+      if (hasScanDate) {
+        headerColumns.push('Data do Scan', 'Hora do Scan');
+      }
       const header = csvRow(headerColumns);
 
       const rows = allItems.map((item) => {
-        const isFound = item.found === true;
-        const scanDateObj = isFound && isScannedItem(item) ? new Date(item.scanDate) : null;
-        const row = getRow(item, scanDateObj);
-        row.push(isFound ? 'Encontrado' : 'Pendente');
+        const exportableItem = item as ExportableItem; // Força a tipagem correta
+
+        // Determina o status exato para a planilha
+        let status = 'Pendente';
+        if (exportableItem.isUnexpected) {
+          status = 'Não Listado';
+        } else if (exportableItem.found) {
+          status = 'Encontrado';
+        }
+
+        const scanDateObj =
+          exportableItem.found && isScannedItem(exportableItem) && exportableItem.scanDate
+            ? new Date(exportableItem.scanDate)
+            : null;
+
+        const row = getRow(exportableItem, scanDateObj);
+
+        row.push(status);
+
         if (hasScanDate) {
           row.push(
             scanDateObj ? formatDisplayDate(scanDateObj) : '',

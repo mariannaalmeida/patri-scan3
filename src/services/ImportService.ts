@@ -248,7 +248,13 @@ export class ImportService {
       });
     }
 
-    const colCode = Object.entries(mapping).find(([_, f]) => f === 'code')![0];
+    const codeEntry = Object.entries(mapping).find(([_, f]) => f === 'code');
+    if (!codeEntry) {
+      // Esse caso já é tratado no início da função, mas por segurança:
+      result.errors.push({ row: 0, field: 'code', message: 'Mapeamento de código inválido.' });
+      return result;
+    }
+    const colCode = codeEntry[0];
     const colDesc = Object.entries(mapping).find(([_, f]) => f === 'description')?.[0];
     const colValue = Object.entries(mapping).find(([_, f]) => f === 'value')?.[0];
 
@@ -310,12 +316,13 @@ export class ImportService {
    */
   static convertToAssetItems(
     data: Record<string, string>[],
-    mapping: Record<string, MappableField>
+    mapping: Record<string, MappableField>,
+    inventoryLocation?: string
   ): AssetItem[] {
     return data.map((row) => {
       const base: AssetItemBase = {
         code: '',
-        description: '',
+        description: undefined,
         location: undefined,
         value: undefined,
         importDate: undefined,
@@ -347,6 +354,11 @@ export class ImportService {
         }
       }
 
+      // FALLBACK: se não tiver localização, herda a do inventário
+      if (!base.location && inventoryLocation) {
+        base.location = inventoryLocation;
+      }
+
       return { ...base, found: false };
     });
   }
@@ -357,7 +369,8 @@ export class ImportService {
   static async createInventoryFromCSV(
     name: string,
     items: AssetItem[],
-    location?: string
+    location?: string,
+    year?: number
   ): Promise<Result<Inventory>> {
     return handleServiceError(async () => {
       const schema = generateBasicSchema(items);
@@ -366,6 +379,7 @@ export class ImportService {
           id: StorageService.generateInventoryId(),
           name,
           location: location || undefined,
+          year: year || undefined,
           importDate: toISODate(new Date()),
           totalItems: items.length,
           status: 'active',

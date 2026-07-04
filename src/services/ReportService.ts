@@ -50,12 +50,13 @@ export class ReportService {
   // ─── Builder HTML ──────────────────────────────────────────────────────────
 
   private static buildHTML(report: InventoryReport): string {
-    const { overall, scanTimeline, notFoundItems } = report;
+    const { overall, scanTimeline, notFoundItems, unexpectedItems } = report;
 
     const pieSvg = ChartService.buildPieChart({
       found: overall.found,
       pending: overall.pending,
-      size: 180,
+      unexpected: overall.unexpectedCount,
+      size: 190,
     });
 
     const timelineSvg = ChartService.buildTimelineChart(scanTimeline, 480, 130);
@@ -187,11 +188,12 @@ export class ReportService {
         <div class="stat-label">Pendentes</div>
         <div class="stat-value ${overall.pending > 0 ? 'amber' : 'green'}">${overall.pending}</div>
       </div>
-    </div>
-          <div class="stat-card">
+        <div class="stat-card">
         <div class="stat-label">Não listados</div>
         <div class="stat-value" style="color: #D85A30;">${overall.unexpectedCount}</div>
       </div>
+    </div>
+
     <div style="margin-top:14px;">
       <div class="progress-track">
         <div class="progress-fill" style="width:${overall.progressPct}%"></div>
@@ -292,6 +294,31 @@ export class ReportService {
   </div>`
   }
 
+  ${
+    unexpectedItems.length > 0
+      ? `
+  <div class="section" style="page-break-before: auto;">
+    <div class="section-title" style="border-left-color: #D85A30;">Itens Não Listados (${unexpectedItems.length})</div>
+    <p style="color:#6B6B88;font-size:11px;margin-bottom:12px;">Estes itens foram fisicamente encontrados, mas não constavam na lista original do inventário.</p>
+    <table>
+      <thead><tr><th>Código</th><th>Descrição</th><th>Localização</th><th>Data/Hora</th></tr></thead>
+      <tbody>
+        ${unexpectedItems
+          .map(
+            (item) => `<tr>
+          <td class="code" style="color: #D85A30;">${escapeHtml(item.code)}</td>
+          <td>${escapeHtml(item.description ?? '—')}</td>
+          <td>${escapeHtml(item.location ?? '—')}</td>
+          <td>${AnalyticsService.formatDateTime(item.scannedAt)}</td>
+        </tr>`
+          )
+          .join('')}
+      </tbody>
+    </table>
+  </div>`
+      : ''
+  }
+
   <!-- Histórico de scans -->
   ${
     scanTimeline.length > 0
@@ -305,7 +332,10 @@ export class ReportService {
           .map(
             (e, i) => `<tr>
           <td style="color:#9B9BAA;">${i + 1}</td>
-          <td class="code">${escapeHtml(e.code)}</td>
+          <td class="code">
+            ${escapeHtml(e.code)}
+            ${e.isUnexpected ? ' <span style="color:#D85A30;font-size:9px;">(Sob)</span>' : ''}
+          </td>
           <td>${escapeHtml(e.description || '—')}</td>
           <td>${escapeHtml(e.location || '—')}</td>
           <td>${AnalyticsService.formatDateTime(e.scanDate)}</td>

@@ -7,7 +7,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
@@ -24,12 +24,13 @@ import Toast from 'react-native-toast-message';
 
 import { StorageService } from '../services/StorageService';
 import { colors, localStyles, manualInventoryStyles } from '../styles/theme';
-import { AssetItem, Inventory, RootStackParamList } from '../types/types';
+import { AssetItem, Inventory, RootStackParamList, UnexpectedItem } from '../types/types';
 import { formatBrazilianCurrencyInput, parseBrazilianCurrencySafe } from '../utils/currencyUtils';
 import { toISODate } from '../utils/dateUtils';
 import { generateBasicSchema } from '../utils/schemaUtils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type ManualInventoryRouteProp = RouteProp<RootStackParamList, 'ManualInventory'>;
 
 // ─── Tipos internos da tela ───────────────────────────────────────────────────
 
@@ -74,14 +75,36 @@ const createEmptyItem = (): ManualItem => ({
 
 export const ManualInventoryScreen = () => {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<ManualInventoryRouteProp>();
   const styles = manualInventoryStyles;
+
+  // Parâmetros para identificar se estamos adicionando itens não listados a um inventário existente
+  const existingInventoryId = route.params?.inventoryId;
+  const existingInventoryName = route.params?.inventoryName;
+
+  // Capturamos o código enviado pelo Scanner (fazemos um cast 'as any' caso seu RootStackParamList não tenha essa propriedade tipada ainda)
+
+  const isUnexpectedMode = !!existingInventoryId;
+  const prefilledCode = route.params?.prefilledCode || '';
 
   const [inventoryName, setInventoryName] = useState('');
   const [schemaFields, setSchemaFields] = useState<CustomFieldDef[]>([]);
   const [newFieldName, setNewFieldName] = useState('');
-  const [items, setItems] = useState<ManualItem[]>([createEmptyItem()]);
+
+  // Iniciamos a lista já injetando o código recebido!
+  const [items, setItems] = useState<ManualItem[]>([
+    {
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      code: prefilledCode, // <--- Aqui está a mágica!
+      description: '',
+      location: '',
+      value: '',
+      customFields: {},
+    },
+  ]);
   const [isLoading, setIsLoading] = useState(false);
   const [inventoryLocation, setInventoryLocation] = useState('');
+  const [inventoryYear, setInventoryYear] = useState('');
 
   // Estado para controlar o Modal de Confirmação
   const [dialogConfig, setDialogConfig] = useState<DialogConfig>({
@@ -98,7 +121,9 @@ export const ManualInventoryScreen = () => {
   const handleGoBack = () => navigation.goBack();
 
   const handleGoToHome = () => {
-    const hasData = inventoryName.trim() !== '' || items.some((item) => item.code.trim() !== '');
+    const hasData = isUnexpectedMode
+      ? items.some((item) => item.code.trim() !== '')
+      : inventoryName.trim() !== '' || items.some((item) => item.code.trim() !== '');
     if (hasData) {
       setDialogConfig({
         visible: true,
@@ -172,14 +197,31 @@ export const ManualInventoryScreen = () => {
 
   const removeItem = (id: string) => {
     if (items.length === 1) {
+      Toast.show({
+        type: 'error',
+        text1: 'Atenção',
+        text2: 'O inventário precisa ter ao menos um item.',
+      });
+      return; // interrompe antes de remover
     }
     setItems((prev) => prev.filter((item) => item.id !== id));
+  };
+  const duplicateItem = (id: string) => {
+    const original = items.find((item) => item.id === id);
+    if (!original) return;
+
+    const newItem: ManualItem = {
+      ...original,
+      id: Date.now().toString() + Math.random().toString(36).slice(2), // novo ID único
+      customFields: { ...original.customFields }, // clone raso é suficiente
+    };
+
+    setItems((prev) => [...prev, newItem]);
     Toast.show({
-      type: 'error',
-      text1: 'Atenção',
-      text2: 'O inventário precisa ter ao menos um item.',
+      type: 'success',
+      text1: 'Item duplicado',
+      text2: `Cópia de ${original.code || 'sem código'} criada.`,
     });
-    return;
   };
 
   const updateItem = <K extends keyof Omit<ManualItem, 'customFields' | 'id'>>(
@@ -205,7 +247,7 @@ export const ManualInventoryScreen = () => {
   // ─── Salvar ──────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!inventoryName.trim()) {
+    if (!isUnexpectedMode && !inventoryName.trim()) {
       Toast.show({ type: 'error', text1: 'Erro', text2: 'Digite um nome para o inventário.' });
       return;
     }
@@ -230,82 +272,146 @@ export const ManualInventoryScreen = () => {
       });
       return;
     }
-
     setIsLoading(true);
     try {
       const now = toISODate(new Date());
+      const assetItems: AssetItem[] = items.map((item) => {
+        const base = {
+          code: item.code.trim(),
+          description: item.description.trim() || undefined,
+          location: item.location.trim() || inventoryLocation.trim() || undefined,
+          value: parseBrazilianCurrencySafe(item.value),
+          customFields: Object.keys(item.customFields).length > 0 ? item.customFields : undefined,
+        };
 
-      const assetItems: AssetItem[] = items.map((item) => ({
-        code: item.code.trim(),
-        description: item.description.trim(),
-        location: item.location.trim() || inventoryLocation.trim() || undefined,
-        value: parseBrazilianCurrencySafe(item.value),
-        customFields: Object.keys(item.customFields).length > 0 ? item.customFields : undefined,
-        found: false,
-      }));
+        if (isUnexpectedMode) {
+          return { ...base, found: true as const, scanDate: now };
+        } else {
+          return { ...base, found: false as const };
+        }
+      });
 
-      const id = StorageService.generateInventoryId();
+      if (isUnexpectedMode && existingInventoryId) {
+        // FLUXO B: Adicionar itens não listados a um inventário existente
+        const loadResult = await StorageService.loadInventory(existingInventoryId);
 
-      // Gera o schema incluindo os campos extras definidos pelo usuário,
-      // mesmo que nenhum item tenha sido preenchido. Isso garante que o schema
-      // reflita a estrutura desejada para consultas futuras.
-      const schema = generateBasicSchema(
-        assetItems,
-        schemaFields.map((f) => f.name)
-      );
+        if (!loadResult.ok) {
+          throw new Error('Não foi possível carregar o inventário existente.');
+        }
 
-      const inventory: Inventory = {
-        items: assetItems,
-        unexpectedItems: [],
-        metadata: {
-          id,
-          name: inventoryName.trim(),
-          location: inventoryLocation.trim() || undefined,
-          importDate: now,
-          totalItems: assetItems.length,
-          status: 'active',
-          lastModified: now,
-        },
-        schema,
-      };
+        const inventory = loadResult.value;
 
-      const result = await StorageService.saveInventory(inventory);
-      if (result.ok) {
-        // Modal de Sucesso com navegação
-        setDialogConfig({
-          visible: true,
-          title: 'Sucesso!',
-          message: `Inventário "${inventoryName}" criado com ${assetItems.length} itens.`,
-          buttons: [
-            {
-              text: 'Ir para Home',
-              type: 'cancel',
-              onPress: () => {
-                closeDialog();
-                navigation.navigate('Home');
+        inventory.metadata.lastModified = now;
+
+        // ─── NOVO: Mapeia para UnexpectedItem[] ─────────────────────
+        const unexpectedItemsToAdd: UnexpectedItem[] = items.map((item) => ({
+          code: item.code.trim(),
+          scannedAt: now,
+          description: item.description.trim() || undefined,
+          location: item.location.trim() || inventoryLocation.trim() || undefined,
+          customFields: Object.keys(item.customFields).length > 0 ? item.customFields : undefined,
+        }));
+
+        inventory.unexpectedItems = [...(inventory.unexpectedItems || []), ...unexpectedItemsToAdd];
+
+        // Atualiza o schema caso novos campos tenham sido criados
+        const newSchemaFields = schemaFields.filter(
+          (f) => !inventory.schema.fields.some((existing) => existing.name === f.name)
+        );
+
+        if (newSchemaFields.length > 0) {
+          inventory.schema.fields.push(
+            ...newSchemaFields.map((f) => ({
+              name: f.name,
+              label: f.name,
+              type: 'text' as const,
+              required: false,
+            }))
+          );
+        }
+
+        const saveResult = await StorageService.saveInventory(inventory);
+
+        if (saveResult.ok) {
+          setDialogConfig({
+            visible: true,
+            title: 'Sucesso!',
+            message: `${assetItems.length} itens adicionados ao inventário "${existingInventoryName}".`,
+            buttons: [
+              {
+                text: 'Voltar ao Inventário',
+                type: 'primary',
+                onPress: () => {
+                  closeDialog();
+                  navigation.goBack(); // Volta para a tela anterior (Scanner ou Detalhes)
+                },
               },
-            },
-            {
-              text: 'Ver Inventário',
-              type: 'primary',
-              onPress: () => {
-                closeDialog();
-                navigation.replace('InventoryDetail', {
-                  inventoryId: id,
-                  inventoryName: inventoryName.trim(),
-                });
-              },
-            },
-          ],
-        });
+            ],
+          });
+        } else {
+          throw new Error(saveResult.error?.message ?? 'Erro desconhecido ao atualizar inventário');
+        }
       } else {
-        throw new Error(result.error?.message ?? 'Erro desconhecido');
+        // FLUXO A: Criar um inventário do zero (Código original)
+        const id = StorageService.generateInventoryId();
+        const schema = generateBasicSchema(
+          assetItems,
+          schemaFields.map((f) => f.name)
+        );
+
+        const inventory: Inventory = {
+          items: assetItems,
+          unexpectedItems: [],
+          metadata: {
+            id,
+            name: inventoryName.trim(),
+            location: inventoryLocation.trim() || undefined,
+            year: inventoryYear.trim() ? Number(inventoryYear.trim()) : undefined,
+            importDate: now,
+            totalItems: assetItems.length,
+            status: 'active',
+            lastModified: now,
+          },
+          schema,
+        };
+
+        const result = await StorageService.saveInventory(inventory);
+        if (result.ok) {
+          setDialogConfig({
+            visible: true,
+            title: 'Sucesso!',
+            message: `Inventário "${inventoryName}" criado com ${assetItems.length} itens.`,
+            buttons: [
+              {
+                text: 'Ver Inventário',
+                type: 'primary',
+                onPress: () => {
+                  closeDialog();
+                  navigation.replace('InventoryDetail', {
+                    inventoryId: id,
+                    inventoryName: inventoryName.trim(),
+                  });
+                },
+              },
+              {
+                text: 'Ir para Home',
+                type: 'cancel',
+                onPress: () => {
+                  closeDialog();
+                  navigation.navigate('Home');
+                },
+              },
+            ],
+          });
+        } else {
+          throw new Error(result.error?.message ?? 'Erro desconhecido');
+        }
       }
     } catch (error) {
       Toast.show({
         type: 'error',
         text1: 'Erro',
-        text2: error instanceof Error ? error.message : 'Falha ao criar inventário',
+        text2: error instanceof Error ? error.message : 'Falha ao processar os dados',
       });
     } finally {
       setIsLoading(false);
@@ -323,7 +429,9 @@ export const ManualInventoryScreen = () => {
         <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cadastro Manual</Text>
+        <Text style={styles.headerTitle}>
+          {isUnexpectedMode ? 'Adicionar Não Listados' : 'Cadastro Manual'}
+        </Text>
         <TouchableOpacity onPress={handleGoToHome} style={styles.homeBtn}>
           <Ionicons name="home-outline" size={22} color={colors.accent} />
         </TouchableOpacity>
@@ -337,26 +445,52 @@ export const ManualInventoryScreen = () => {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        {/* Nome do Inventário */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Nome do Inventário *</Text>
-          <TextInput
-            style={styles.input}
-            value={inventoryName}
-            onChangeText={setInventoryName}
-            placeholder="Ex: Patrimônio 2026"
-            placeholderTextColor={colors.textDim}
-          />
-          {/* Local do Inventário */}
-          <Text style={styles.label}>Localização do Inventário</Text>
-          <TextInput
-            style={styles.input}
-            value={inventoryLocation}
-            onChangeText={setInventoryLocation}
-            placeholder="Ex: Sala 101, Prédio A"
-            placeholderTextColor={colors.textDim}
-          />
-        </View>
+        {/* Renderiza as opções de configuração do inventário APENAS se for uma criação nova */}
+        {!isUnexpectedMode && (
+          /* Nome do Inventário */
+          <View style={styles.section}>
+            <Text style={styles.label}>Nome do Inventário *</Text>
+            <TextInput
+              style={styles.input}
+              value={inventoryName}
+              onChangeText={setInventoryName}
+              placeholder="Ex: Patrimônio 2026"
+              placeholderTextColor={colors.textDim}
+              accessibilityLabel="Nome do Inventário "
+            />
+            <Text style={styles.label}>Localização do Inventário</Text>
+            <TextInput
+              style={styles.input}
+              value={inventoryLocation}
+              onChangeText={setInventoryLocation}
+              placeholder="Ex: Sala 101, Prédio A"
+              placeholderTextColor={colors.textDim}
+              accessibilityLabel="Localização do Inventário"
+            />
+            <Text style={styles.label}>Ano de Referência</Text>
+            <TextInput
+              style={styles.input}
+              value={inventoryYear}
+              onChangeText={setInventoryYear}
+              placeholder="Ex: 2026"
+              placeholderTextColor={colors.textDim}
+              keyboardType="numeric"
+              maxLength={4}
+              accessibilityLabel="Ano de referência do inventário"
+            />
+          </View>
+        )}
+
+        {isUnexpectedMode && (
+          <View style={styles.section}>
+            <Text style={{ color: colors.textDim, marginBottom: 12 }}>
+              Adicionando itens não previstos ao inventário:{' '}
+              <Text style={{ fontWeight: 'bold', color: colors.text }}>
+                {existingInventoryName}
+              </Text>
+            </Text>
+          </View>
+        )}
 
         {/* ── Campos Extras ─────────────────────────────── */}
         <View style={styles.section}>
@@ -382,9 +516,10 @@ export const ManualInventoryScreen = () => {
               style={[styles.input, localStyles.addFieldInput]}
               value={newFieldName}
               onChangeText={setNewFieldName}
-              placeholder="Nome do campo…"
+              placeholder="Nome do campo"
               placeholderTextColor={colors.textDim}
               onSubmitEditing={addSchemaField}
+              accessibilityLabel="Nome do campo"
               returnKeyType="done"
             />
             <TouchableOpacity style={localStyles.addFieldBtn} onPress={addSchemaField}>
@@ -406,10 +541,24 @@ export const ManualInventoryScreen = () => {
             <View key={item.id} style={styles.itemCard}>
               <View style={styles.itemHeader}>
                 <Text style={styles.itemTitle}>Item {index + 1}</Text>
-                <TouchableOpacity onPress={() => removeItem(item.id)} style={styles.removeButton}>
-                  <Ionicons name="trash-outline" size={18} color={colors.accentErr} />
-                  <Text style={styles.removeButtonText}> Remover</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {/* Botão Duplicar */}
+                  <TouchableOpacity
+                    onPress={() => duplicateItem(item.id)}
+                    style={styles.duplicateButton}
+                  >
+                    <Ionicons name="copy-outline" size={18} color={colors.accent} />
+                    <Text style={[styles.removeButtonText, { color: colors.accent }]}>
+                      {' '}
+                      Duplicar
+                    </Text>
+                  </TouchableOpacity>
+                  {/* Botão Remover  */}
+                  <TouchableOpacity onPress={() => removeItem(item.id)} style={styles.removeButton}>
+                    <Ionicons name="trash-outline" size={18} color={colors.accentErr} />
+                    <Text style={styles.removeButtonText}> Remover</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Campos fixos */}
@@ -417,9 +566,10 @@ export const ManualInventoryScreen = () => {
               <TextInput
                 style={styles.input}
                 value={item.code}
-                onChangeText={(v) => updateItem(item.id, 'code', v)}
+                onChangeText={(v) => updateItem(item.id, 'code', v.toUpperCase())}
                 placeholder="Ex: PAT-001"
                 placeholderTextColor={colors.textDim}
+                accessibilityLabel="Código"
                 autoCapitalize="characters"
               />
 
@@ -432,6 +582,7 @@ export const ManualInventoryScreen = () => {
                 placeholderTextColor={colors.textDim}
                 multiline
                 numberOfLines={2}
+                accessibilityLabel="Descrição"
               />
 
               <View style={styles.row}>
@@ -443,6 +594,7 @@ export const ManualInventoryScreen = () => {
                     onChangeText={(v) => updateItem(item.id, 'location', v)}
                     placeholder="Ex: Sala 101"
                     placeholderTextColor={colors.textDim}
+                    accessibilityLabel="Localização"
                   />
                 </View>
               </View>
@@ -460,6 +612,7 @@ export const ManualInventoryScreen = () => {
                     }}
                     placeholder="Ex: 1.500,00"
                     placeholderTextColor={colors.textDim}
+                    accessibilityLabel="Valor"
                     keyboardType="numeric" // 'numeric' para forçar apenas números no teclado
                   />
                 </View>
@@ -477,6 +630,7 @@ export const ManualInventoryScreen = () => {
                         onChangeText={(v) => updateCustomField(item.id, sf.name, v)}
                         placeholder={`Digite ${sf.name.toLowerCase()}…`}
                         placeholderTextColor={colors.textDim}
+                        accessibilityLabel="Campos Extras"
                       />
                     </View>
                   ))}
@@ -494,7 +648,9 @@ export const ManualInventoryScreen = () => {
           {isLoading ? (
             <ActivityIndicator color="#000" />
           ) : (
-            <Text style={styles.saveButtonText}>Salvar Inventário</Text>
+            <Text style={styles.saveButtonText}>
+              {isUnexpectedMode ? 'Salvar Itens Não Listados' : 'Salvar Inventário'}
+            </Text>
           )}
         </TouchableOpacity>
 

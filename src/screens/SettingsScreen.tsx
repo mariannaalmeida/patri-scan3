@@ -31,7 +31,7 @@ export const SettingsScreen = () => {
 
   // Estado local das configurações (com valores padrão seguros)
   const [settings, setSettings] = useState<AppSettings>({
-    soundEnabled: false,
+
     vibrationEnabled: true,
     flashEnabled: false,
     theme: 'light',
@@ -58,7 +58,7 @@ export const SettingsScreen = () => {
 
   // Atualizar e salvar configuração
   // Altere a assinatura da função para ignorar o 'theme'
-  const toggleSetting = async (key: 'soundEnabled' | 'vibrationEnabled' | 'flashEnabled') => {
+  const toggleSetting = async (key: 'vibrationEnabled' | 'flashEnabled') => {
     const newSettings = { ...settings, [key]: !settings[key] };
     setSettings(newSettings);
 
@@ -149,14 +149,6 @@ export const SettingsScreen = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ESCANEAMENTO</Text>
           <View style={styles.card}>
-            <SettingToggle
-              icon="volume-high-outline"
-              label="Som do bipe"
-              description="Tocar som ao ler um código de barras"
-              value={settings.soundEnabled}
-              onValueChange={() => toggleSetting('soundEnabled')}
-            />
-            <Divider />
             <SettingToggle
               icon="phone-portrait-outline"
               label="Vibração"

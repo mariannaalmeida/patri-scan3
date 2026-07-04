@@ -1497,6 +1497,11 @@ export const homeStyles = StyleSheet.create({
 
 // Adicione após  reportDetailStyles
 export const reportDetailStyles = StyleSheet.create({
+  scanRowUnexpected: {
+    backgroundColor: '#FFF3E0',
+    borderLeftColor: colors.warning,
+    borderLeftWidth: 3,
+  },
   itemRowUnexpected: {
     backgroundColor: '#FFF3E0', // fundo levemente alaranjado
   },
@@ -1738,15 +1743,7 @@ export const reportDetailStyles = StyleSheet.create({
     color: colors.textDim,
     textAlign: 'center',
   },
-  groupTable: {
-    marginTop: 4,
-  },
-  groupTableHeader: {
-    flexDirection: 'row',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ffffff0A',
-  },
+
   groupTableHeaderCell: {
     flex: 1,
     fontSize: 9,
@@ -2389,6 +2386,12 @@ export const reportsStyles = StyleSheet.create({
 });
 
 export const manualInventoryStyles = StyleSheet.create({
+  duplicateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+
   backBtn: {
     width: 36,
     height: 36,

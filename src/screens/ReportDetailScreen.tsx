@@ -27,12 +27,7 @@ import {
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import Toast from 'react-native-toast-message';
-import {
-  AnalyticsService,
-  GroupStat,
-  InventoryReport,
-  ScanEvent,
-} from '../services/AnalyticsService';
+import { AnalyticsService, InventoryReport, ScanEvent } from '../services/AnalyticsService';
 import { ChartService } from '../services/ChartService';
 import { CSVExportService } from '../services/CsvExportService';
 import { ReportService } from '../services/ReportService';
@@ -130,7 +125,8 @@ export const ReportDetailScreen = () => {
         ? ChartService.buildPieChart({
             found: report.overall.found,
             pending: report.overall.pending,
-            size: 180,
+            unexpected: report.unexpectedItems.length,
+            size: 190,
           })
         : '',
     [report]
@@ -534,6 +530,7 @@ export const ReportDetailScreen = () => {
           </Section>
         )}
       </ScrollView>
+      <CustomDialog config={dialogConfig} />
     </View>
   );
 };
@@ -584,41 +581,17 @@ const MetaItem = React.memo(({ label, value }: { label: string; value: string })
   </View>
 ));
 
-const GroupTable = React.memo(({ groups }: { groups: GroupStat[] }) => (
-  <View style={styles.groupTable}>
-    <View style={styles.groupTableHeader}>
-      {['Grupo', 'Total', 'Enc.', '%'].map((h) => (
-        <Text key={h} style={styles.groupTableHeaderCell}>
-          {h}
-        </Text>
-      ))}
-    </View>
-    {groups.map((g, i) => (
-      <View key={`${g.label}-${i}`} style={[styles.groupRow, i % 2 === 0 && styles.groupRowEven]}>
-        <Text style={[styles.groupCell, { flex: 2 }]} numberOfLines={1}>
-          {g.label}
-        </Text>
-        <Text style={styles.groupCell}>{g.total}</Text>
-        <Text style={[styles.groupCell, { color: colors.accent }]}>{g.found}</Text>
-        <Text
-          style={[
-            styles.groupCell,
-            { color: g.progressPct === 100 ? colors.accent : colors.warning },
-          ]}
-        >
-          {g.progressPct}%
-        </Text>
-      </View>
-    ))}
-  </View>
-));
-
 const ScanEventRow = React.memo(({ event, index }: { event: ScanEvent; index: number }) => (
-  <View style={styles.scanRow}>
+  <View style={[styles.scanRow, event.isUnexpected && styles.scanRowUnexpected]}>
     <Text style={styles.scanIndex}>{index + 1}</Text>
     <View style={styles.scanBody}>
       <View style={styles.scanHeader}>
-        <Text style={styles.scanCode}>{event.code}</Text>
+        <Text style={styles.scanCode}>
+          {event.code}
+          {event.isUnexpected ? (
+            <Text style={{ color: colors.warning, fontSize: 10 }}> (Não Listado)</Text>
+          ) : null}
+        </Text>
         <Text style={styles.scanTime}>
           {AnalyticsService.formatDateTime(event.scanDate)}
           <Text style={styles.scanDelta}> +{event.minutesFromStart}min</Text>

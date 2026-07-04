@@ -8,14 +8,6 @@ export function generateBasicSchema(
     { name: 'code', label: 'Código', type: 'text', required: true, fixed: true },
     { name: 'description', label: 'Descrição', type: 'text', required: false, fixed: true },
     { name: 'location', label: 'Localização', type: 'text', required: false, fixed: true },
-    {
-      name: 'status',
-      label: 'Status',
-      type: 'text',
-      required: true,
-      fixed: true,
-      options: ['good', 'damaged', 'missing', 'in_repair'],
-    },
     { name: 'value', label: 'Valor (R$)', type: 'currency', required: false, fixed: true },
   ];
 

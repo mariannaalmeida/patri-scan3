@@ -51,11 +51,6 @@ export const ScannerScreen = () => {
   const [pendingItem, setPendingItem] = useState<AssetItem | null>(null);
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
 
-  // ─── NOVOS ESTADOS PARA ITEM NÃO LISTADO ──────────────────────────────
-  const [isUnexpectedModalVisible, setIsUnexpectedModalVisible] = useState(false);
-  const [pendingUnexpectedCode, setPendingUnexpectedCode] = useState<string | null>(null);
-  const [unexpectedDescription, setUnexpectedDescription] = useState('');
-  const [unexpectedLocation, setUnexpectedLocation] = useState('');
   // ──────────────────────────────────────────────────────────────────────
 
   const [alerts, setAlerts] = useState<AlertBanner[]>([]);
@@ -152,46 +147,12 @@ export const ScannerScreen = () => {
     }).start();
   }, [lastItemAnim]);
 
-  // ─── REGISTRAR ITEM NÃO LISTADO ──────────────────────────────────────
-  const handleRegisterUnexpected = useCallback(async () => {
-    if (!inventory || !pendingUnexpectedCode) return;
-
-    try {
-      const result = await ScannerService.registerUnexpectedItem(
-        inventory.metadata.id,
-        pendingUnexpectedCode,
-        unexpectedDescription.trim() || undefined,
-        unexpectedLocation.trim() || undefined
-      );
-
-      if (result.ok) {
-        setInventory(result.value);
-        showAlert('success', `Item "${pendingUnexpectedCode}" registrado como não listado.`);
-      } else {
-        showAlert('error', result.error.message);
-      }
-    } catch (err) {
-      showAlert('error', 'Falha ao registrar item não listado.');
-    } finally {
-      setIsUnexpectedModalVisible(false);
-      setPendingUnexpectedCode(null);
-      setUnexpectedDescription('');
-      setUnexpectedLocation('');
-    }
-  }, [inventory, pendingUnexpectedCode, unexpectedDescription, unexpectedLocation, showAlert]);
-
-  const handleCancelUnexpected = useCallback(() => {
-    setIsUnexpectedModalVisible(false);
-    setPendingUnexpectedCode(null);
-    setUnexpectedDescription('');
-    setUnexpectedLocation('');
-  }, []);
   // ──────────────────────────────────────────────────────────────────────
 
   // Lógica de scan
   const handleCodeScanned = useCallback(
     (code: string) => {
-      if (!inventory || isConfirmVisible || pendingItem || isUnexpectedModalVisible) return;
+      if (!inventory || isConfirmVisible || pendingItem) return;
 
       if (__DEV__) {
         console.log('[Scanner] Código capturado:', code);
@@ -223,30 +184,31 @@ export const ScannerScreen = () => {
         showAlert('warning', feedback.message);
       } else if (match.status === 'not_found') {
         Vibration.vibrate([0, 100, 50, 100]);
-        // ─── NOVO FLUXO: ALERTA COM OPÇÕES ──────────────────────────
+
         Alert.alert(
           'Código não encontrado',
-          `"${normalizedCode}" não está no inventário. Deseja registrá-lo como item não listado?`,
+          `O código "${normalizedCode}" não está na lista original. Deseja registrar este item não listado?`,
           [
-            {
-              text: 'Ignorar',
-              style: 'cancel',
-            },
+            { text: 'Cancelar', style: 'cancel' },
             {
               text: 'Registrar',
               onPress: () => {
-                setPendingUnexpectedCode(normalizedCode);
-                // Preenche a localização com a localização fixa do inventário, se existir
-                setUnexpectedLocation(inventory.metadata.location || '');
-                setIsUnexpectedModalVisible(true);
+                // Pausa o scanner brevemente
+                scanCooldown.current = true;
+
+                // Navega para a tela manual passando os dados E o código escaneado
+                navigation.navigate('ManualInventory', {
+                  inventoryId: inventory.metadata.id,
+                  inventoryName: inventory.metadata.name,
+                  prefilledCode: normalizedCode, // <--- Enviando o código para a tela!
+                } as any); // (o 'as any' evita erro do TypeScript se prefilledCode não estiver no types.ts)
               },
             },
           ]
         );
-        // ──────────────────────────────────────────────────────────────
       }
     },
-    [inventory, isConfirmVisible, pendingItem, isUnexpectedModalVisible, showAlert]
+    [inventory, isConfirmVisible, pendingItem, showAlert]
   );
 
   // Confirmação do scan
@@ -547,111 +509,11 @@ export const ScannerScreen = () => {
         onConfirm={handleConfirm}
         onCancel={handleCancelConfirm}
       />
-
-      {/* ─── NOVO MODAL: ITEM NÃO LISTADO ────────────────────────────── */}
-
-      <UnexpectedModal
-        visible={isUnexpectedModalVisible}
-        code={pendingUnexpectedCode}
-        description={unexpectedDescription}
-        location={unexpectedLocation}
-        onChangeDescription={setUnexpectedDescription}
-        onChangeLocation={setUnexpectedLocation}
-        onConfirm={handleRegisterUnexpected}
-        onCancel={handleCancelUnexpected}
-      />
-      {/* ──────────────────────────────────────────────────────────────── */}
     </View>
   );
 };
 
-// ─── Subcomponentes (inalterados) ────────────────────────────────────────
-
-interface UnexpectedModalProps {
-  visible: boolean;
-  code: string | null;
-  description: string;
-  location: string;
-  onChangeDescription: (text: string) => void;
-  onChangeLocation: (text: string) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-const UnexpectedModal = React.memo(
-  ({
-    visible,
-    code,
-    description,
-    location,
-    onChangeDescription,
-    onChangeLocation,
-    onConfirm,
-    onCancel,
-  }: UnexpectedModalProps) => {
-    return (
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={scannerStyles.modalOverlay}
-        >
-          <View style={scannerStyles.modalSheet}>
-            <View style={scannerStyles.modalHandle} />
-            <Text style={scannerStyles.modalTitle}>Registrar item não listado</Text>
-            <Text style={scannerStyles.modalSubtitle}>
-              Este código não pertence ao inventário. Registre-o para constar no relatório.
-            </Text>
-
-            <ScrollView
-              style={{ marginTop: 16, width: '100%' }}
-              contentContainerStyle={{ paddingBottom: 16 }}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={scannerStyles.detailLabel}>Código</Text>
-              <Text
-                style={[
-                  scannerStyles.detailValue,
-                  scannerStyles.detailValueHighlight,
-                  { marginBottom: 12 },
-                ]}
-              >
-                {code}
-              </Text>
-
-              <Text style={scannerStyles.detailLabel}>Descrição (opcional)</Text>
-              <TextInput
-                style={[scannerStyles.manualInput, { marginBottom: 12, width: '100%' }]}
-                value={description}
-                onChangeText={onChangeDescription}
-                placeholder="Ex: Monitor Dell 24'"
-                placeholderTextColor="#555"
-              />
-
-              <Text style={scannerStyles.detailLabel}>Localização (opcional)</Text>
-              <TextInput
-                style={[scannerStyles.manualInput, { marginBottom: 12, width: '100%' }]}
-                value={location}
-                onChangeText={onChangeLocation}
-                placeholder="Ex: Sala 101"
-                placeholderTextColor="#555"
-              />
-            </ScrollView>
-
-            <View style={scannerStyles.modalActions}>
-              <TouchableOpacity style={scannerStyles.cancelBtn} onPress={onCancel}>
-                <Text style={scannerStyles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={scannerStyles.confirmBtn} onPress={onConfirm}>
-                <Ionicons name="add-circle" size={20} color="#000" />
-                <Text style={scannerStyles.confirmBtnText}>Registrar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    );
-  }
-);
+// ─── Subcomponentes
 
 interface CameraAreaProps {
   permission: { granted: boolean } | null;

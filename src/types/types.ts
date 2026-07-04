@@ -8,7 +8,7 @@ export type AssetCode = string;
 
 // Mantém autocomplete para os fixos e permite strings customizadas
 
-export type KnownFields = 'code' | 'description' | 'location'  | 'value';
+export type KnownFields = 'code' | 'description' | 'location' | 'value';
 
 export type MappableField = KnownFields | (string & {});
 
@@ -17,11 +17,9 @@ export const isStandardField = (field: string): field is KnownFields => {
   return ['code', 'description', 'location', 'value'].includes(field);
 };
 
-
-
 export interface AssetItemBase {
   code: AssetCode;
-  description: string;
+  description?: string;
   location?: string;
   value?: number;
   importDate?: ISODateString;
@@ -54,6 +52,7 @@ export interface UnexpectedItem {
   scannedAt: string; // ISO 8601
   description?: string;
   location?: string;
+  customFields?: Record<string, string>;
 }
 
 export interface Inventory {
@@ -64,7 +63,7 @@ export interface Inventory {
   stats?: InventoryStats;
 }
 
-export type ScannedAssetItem = AssetItem & { found: true; scanDate: string };
+export type ScannedAssetItem = Extract<AssetItem, { found: true }>;
 
 // --- SCANNER ------
 export interface ScanResult {
@@ -88,7 +87,6 @@ export interface ScanSession {
 export type ThemeMode = 'light' | 'dark';
 
 export interface AppSettings {
-  soundEnabled: boolean;
   vibrationEnabled: boolean;
   flashEnabled: boolean;
   theme: ThemeMode;
@@ -159,6 +157,7 @@ export interface InventorySchema {
 export interface InventoryStats {
   totalItems: number;
   scannedItems: number;
+  unexpectedCount: number;
   lastModified?: ISODateString;
   progress: number;
 }
@@ -204,12 +203,19 @@ export type RootStackParamList = {
   };
   // Criação/Importação
   ImportInventory: undefined; // Importar CSV
-  ManualInventory: undefined; // Cadastro manual
+  ManualInventory:
+    | {
+        inventoryId?: string;
+        inventoryName?: string;
+        prefilledCode?: string;
+      }
+    | undefined; // Cadastro manual
   // Configurações
   Settings: undefined;
   ItemDetail: {
     inventoryId: string;
     itemCode: string;
+    isUnexpected?: boolean;
   };
 };
 
@@ -292,3 +298,10 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: AppError };
 export function isScannedItem(item: AssetItem): item is AssetItem & { found: true } {
   return item.found === true;
 }
+
+//
+// TIPOS DE RELATÓRIO (definidos em AnalyticsService.ts)
+//
+// - InventoryReport, OverallStats, GroupStat, ScanEvent
+//   são gerados por AnalyticsService.compute().
+//   Consulte o serviço para detalhes.

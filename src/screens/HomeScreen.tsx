@@ -15,6 +15,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -25,14 +26,17 @@ import {
 } from 'react-native';
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles, homeStyles } from '../styles/theme';
-import { AssetItem, Inventory, RootStackParamList } from '../types/types';
+import { AssetItem, Inventory, RootStackParamList, UnexpectedItem } from '../types/types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-type FlatAsset = AssetItem & {
+// Substitua o seu type FlatAsset por isto:
+type FlatAsset = (AssetItem | (UnexpectedItem & { found: true })) & {
   inventoryName: string;
   inventoryId: string;
+  inventoryLocation?: string;
   isScanned: boolean;
+  isUnexpected?: boolean;
 };
 
 interface ActiveFilters {
@@ -91,14 +95,30 @@ export const HomeScreen = () => {
   }, []);
 
   const buildFlatAssets = useCallback((invs: Inventory[]): FlatAsset[] => {
-    return invs.flatMap((inv) =>
-      inv.items.map((item) => ({
+    return invs.flatMap((inv) => {
+      // 1. Itens originais (já estão no formato AssetItem)
+      const original: FlatAsset[] = inv.items.map((item) => ({
         ...item,
         inventoryName: inv.metadata.name,
         inventoryId: inv.metadata.id,
+        inventoryLocation: inv.metadata.location,
         isScanned: item.found === true,
-      }))
-    );
+        isUnexpected: false as const,
+      }));
+
+      // 2. Sobras Físicas
+      const unexpected: FlatAsset[] = (inv.unexpectedItems || []).map((item) => ({
+        ...item,
+        found: true as const, // Forçamos o literal true
+        inventoryName: inv.metadata.name,
+        inventoryId: inv.metadata.id,
+        inventoryLocation: inv.metadata.location,
+        isScanned: true,
+        isUnexpected: true as const,
+      }));
+
+      return [...original, ...unexpected];
+    });
   }, []);
 
   useFocusEffect(
@@ -138,20 +158,26 @@ export const HomeScreen = () => {
     [allAssets]
   );
 
-  // availableTipos retorna objetos { value, label } para exibir rótulos legíveis na UI
-
   const filteredAssets = useMemo(() => {
     let list = allAssets;
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(
-        (a) =>
+      list = list.filter((a) => {
+        const inCustom = a.customFields
+          ? Object.values(a.customFields).some((val) => val.toLowerCase().includes(q))
+          : false;
+        return (
           a.code?.toLowerCase().includes(q) ||
           a.description?.toLowerCase().includes(q) ||
-          a.location?.toLowerCase().includes(q)
-      );
+          a.location?.toLowerCase().includes(q) ||
+          inCustom
+        );
+      });
     }
-    if (filters.local) list = list.filter((a) => a.location === filters.local);
+    if (filters.local)
+      list = list.filter(
+        (a) => a.location === filters.local || a.inventoryLocation === filters.local
+      );
     return list;
   }, [allAssets, search, filters]);
 
@@ -162,12 +188,12 @@ export const HomeScreen = () => {
 
   const isLoadingMoreRef = useRef(false);
 
-  // CORREÇÃO: handleLoadMore sem requestAnimationFrame, usando pageRef para valor atual e setPage direto.
+  //  handleLoadMore sem requestAnimationFrame, usando pageRef para valor atual e setPage direto.
   const handleLoadMore = useCallback(() => {
     if (isLoadingMoreRef.current || isEndReached) return;
-    const nextPage = pageRef.current + 1;
-    const nextCount = nextPage * PAGE_SIZE;
-    if (nextCount >= filteredAssets.length) {
+
+    // Verifica se já mostramos todos os itens disponíveis
+    if (pageRef.current * PAGE_SIZE >= filteredAssets.length) {
       setIsEndReached(true);
       return;
     }
@@ -175,11 +201,10 @@ export const HomeScreen = () => {
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
 
-    setPage(nextPage);
+    setPage((prev) => prev + 1);
     setIsLoadingMore(false);
     isLoadingMoreRef.current = false;
   }, [filteredAssets.length, isEndReached]);
-
   // Reset de página quando busca ou filtros mudam
   useEffect(() => {
     setPage(1);
@@ -410,13 +435,16 @@ export const HomeScreen = () => {
       {/* Lista paginada */}
       <FlatList
         data={visibleAssets}
-        keyExtractor={(item) => `${item.inventoryId}-${item.code}`}
+        keyExtractor={(item) =>
+          `${item.inventoryId}-${item.isUnexpected ? 'unexp-' : ''}${item.code}`
+        }
         renderItem={({ item }) => (
           <AssetRow asset={item} onPress={() => handleGoToInventory(item)} />
         )}
         contentContainerStyle={[
           homeStyles.listContent,
           visibleAssets.length === 0 && homeStyles.listContentEmpty,
+          { paddingBottom: Platform.OS === 'ios' ? 100 : 50 },
         ]}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.3}
@@ -488,7 +516,13 @@ const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
       asset.isScanned ? 'escaneado' : 'pendente'
     }`}
   >
-    <View style={[homeStyles.itemIndicator, asset.isScanned && homeStyles.itemIndicatorScanned]} />
+    <View
+      style={[
+        homeStyles.itemIndicator,
+        asset.isScanned && homeStyles.itemIndicatorScanned,
+        asset.isUnexpected && { backgroundColor: colors.warning },
+      ]}
+    />
     <View style={homeStyles.itemBody}>
       <View style={homeStyles.itemHeader}>
         <Text style={homeStyles.itemCode}>{asset.code}</Text>
@@ -506,9 +540,10 @@ const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
         </Text>
       )}
       <View style={homeStyles.itemMeta}>
-        {asset.location && (
+        {(asset.location || asset.inventoryLocation) && (
           <Text style={homeStyles.itemMetaText}>
-            <Ionicons name="location-outline" size={11} /> {asset.location}
+            <Ionicons name="location-outline" size={11} />{' '}
+            {asset.location || asset.inventoryLocation}
           </Text>
         )}
 
