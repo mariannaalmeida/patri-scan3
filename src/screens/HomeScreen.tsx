@@ -1,6 +1,4 @@
 /**
- * HomeScreen.tsx
- *
  * Tela inicial com lista de todos os bens patrimoniais de todos os inventários.
  * Compatível com os tipos atuais do PATRISCAN (AssetItem com união discriminada,
  * StorageService baseado em Result, navegação por inventoryId).
@@ -30,7 +28,7 @@ import { AssetItem, Inventory, RootStackParamList, UnexpectedItem } from '../typ
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-// Substitua o seu type FlatAsset por isto:
+
 type FlatAsset = (AssetItem | (UnexpectedItem & { found: true })) & {
   inventoryName: string;
   inventoryId: string;
@@ -109,7 +107,7 @@ export const HomeScreen = () => {
       // 2. Sobras Físicas
       const unexpected: FlatAsset[] = (inv.unexpectedItems || []).map((item) => ({
         ...item,
-        found: true as const, // Forçamos o literal true
+        found: true as const,
         inventoryName: inv.metadata.name,
         inventoryId: inv.metadata.id,
         inventoryLocation: inv.metadata.location,
@@ -211,7 +209,7 @@ export const HomeScreen = () => {
     setIsEndReached(filteredAssets.length <= PAGE_SIZE);
   }, [search, filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ==================== NAVEGAÇÃO ====================
+  // NAVEGAÇÃO
 
   const handleGoToInventory = useCallback(
     (asset: FlatAsset) => {
@@ -271,7 +269,7 @@ export const HomeScreen = () => {
     navigation.navigate('Settings');
   }, [navigation]);
 
-  // ==================== FILTROS ====================
+  //  FILTROS
 
   const applyFilters = useCallback(() => {
     setFilters(pendingFilters);

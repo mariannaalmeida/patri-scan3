@@ -42,7 +42,7 @@ export const InventoryDetailScreen = () => {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
 
-  // ─── Carregamento ────────────────────────────────────────────
+  //  Carregamento
   const loadInventory = useCallback(
     async (silent = false) => {
       if (!silent) setIsLoading(true);
@@ -69,13 +69,13 @@ export const InventoryDetailScreen = () => {
     }, [loadInventory])
   );
 
-  // ─── Progresso ───────────────────────────────────────────────
+  // Progresso
   const progress = useMemo(
     () => (inventory ? ScannerService.getProgress(inventory) : null),
     [inventory]
   );
 
-  // ─── Consolidação dos Dados (Merge) ──────────────────────────
+  //  Consolidação dos Dados (Merge)
   const combinedItems = useMemo<CombinedItem[]>(() => {
     if (!inventory) return [];
 
@@ -98,7 +98,7 @@ export const InventoryDetailScreen = () => {
 
   const unexpectedCount = inventory?.unexpectedItems?.length || 0;
 
-  // ─── Itens filtrados e pesquisados ───────────────────────────
+  // Itens filtrados e pesquisados
   const filteredItems = useMemo(() => {
     if (!inventory) return [];
     let result: CombinedItem[] = combinedItems;
@@ -122,9 +122,9 @@ export const InventoryDetailScreen = () => {
       });
     }
     return result;
-  }, [combinedItems, filter, search]);
+  }, [inventory, combinedItems, filter, search]);
 
-  // ─── Ações de navegação e reset ──────────────────────────────
+  //  Ações de navegação e reset
   const handleViewReport = useCallback(() => {
     if (!inventory) return;
     navigation.navigate('ReportDetail', {
@@ -204,7 +204,7 @@ export const InventoryDetailScreen = () => {
     await loadInventory(true);
   }, [loadInventory]);
 
-  // ─── Loading e fallback ──────────────────────────────────────
+  // Loading e fallback
   if (isLoading) {
     return (
       <View style={inventoryDetailStyles.loadingContainer}>
@@ -219,7 +219,7 @@ export const InventoryDetailScreen = () => {
 
   const isComplete = progress !== null && progress.percentage === 100;
 
-  // ─── Render principal ────────────────────────────────────────
+  // Render principal
   return (
     <View style={commonStyles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
@@ -324,7 +324,6 @@ export const InventoryDetailScreen = () => {
         </View>
       </View>
 
-      {/* Filtros */}
       {/* Filtros */}
       <View>
         <ScrollView
@@ -456,8 +455,7 @@ export const InventoryDetailScreen = () => {
   );
 };
 
-// ─── Sub-componentes ─────────────────────────────────────────────────────────
-
+// Sub-componentes
 interface StatCardProps {
   label: string;
   value: number;
@@ -551,7 +549,7 @@ const ItemRow = React.memo(({ item }: ItemRowProps) => {
   );
 });
 
-// ─── Sub-componentes menores ─────────────────────────────────────────────────
+//  Sub-componentes menores
 
 interface ItemMetaProps {
   location?: string;

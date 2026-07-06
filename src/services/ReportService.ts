@@ -1,5 +1,4 @@
 /**
- * ReportService.ts
  *
  * Gera o relatório em PDF via expo-print (HTML → PDF nativo no iOS/Android).
  * Usa os SVGs do ChartService inline no HTML para evitar dependências externas.

@@ -36,7 +36,7 @@ export class StorageService {
     fields: [],
   };
 
-  // --- Helpers privados ---
+  // Helpers privados
 
   private static safeJSONParse<T>(data: string, fallback: T): T {
     try {
@@ -87,7 +87,7 @@ export class StorageService {
     }
   }
 
-  // --- Métodos públicos ---
+  //  Métodos públicos
 
   // Validação de ID (security)
   public static isValidInventoryId(id: string): boolean {

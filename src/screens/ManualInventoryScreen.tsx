@@ -1,5 +1,4 @@
 /**
- * ManualInventoryScreen.tsx
  *
  * Tela para cadastro manual de inventário, item por item.
  * Útil para pequenos inventários ou quando não há arquivo CSV.
@@ -32,7 +31,7 @@ import { generateBasicSchema } from '../utils/schemaUtils';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ManualInventoryRouteProp = RouteProp<RootStackParamList, 'ManualInventory'>;
 
-// ─── Tipos internos da tela ───────────────────────────────────────────────────
+//  Tipos internos da tela
 
 interface CustomFieldDef {
   id: string;
@@ -60,7 +59,7 @@ interface DialogConfig {
   }[];
 }
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+// Constantes
 
 const createEmptyItem = (): ManualItem => ({
   id: Date.now().toString() + Math.random().toString(36).slice(2),
@@ -71,7 +70,7 @@ const createEmptyItem = (): ManualItem => ({
   customFields: {},
 });
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+//  Componente principal
 
 export const ManualInventoryScreen = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -116,7 +115,7 @@ export const ManualInventoryScreen = () => {
 
   const closeDialog = () => setDialogConfig((prev) => ({ ...prev, visible: false }));
 
-  // ─── Navegação ──────────────────────────────────────────────────────────────
+  // Navegação
 
   const handleGoBack = () => navigation.goBack();
 
@@ -146,7 +145,7 @@ export const ManualInventoryScreen = () => {
       navigation.navigate('Home');
     }
   };
-  // ─── Gerenciamento do Schema ────────────────────────────────────────────────
+  // Gerenciamento do Schema
 
   const addSchemaField = () => {
     const trimmed = newFieldName.trim();
@@ -191,8 +190,7 @@ export const ManualInventoryScreen = () => {
     });
   };
 
-  // ─── Gerenciamento de Itens ──────────────────────────────────────────────────
-
+  //  Gerenciamento de Itens
   const addItem = () => setItems((prev) => [...prev, createEmptyItem()]);
 
   const removeItem = (id: string) => {
@@ -244,10 +242,9 @@ export const ManualInventoryScreen = () => {
     );
   };
 
-  // ─── Salvar ──────────────────────────────────────────────────────────────────
 
-  // ─── Salvar ──────────────────────────────────────────────────────────────────
 
+  // Salvar
   const handleSave = async () => {
     if (!isUnexpectedMode && !inventoryName.trim()) {
       Toast.show({ type: 'error', text1: 'Erro', text2: 'Digite um nome para o inventário.' });
@@ -449,7 +446,7 @@ export const ManualInventoryScreen = () => {
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
+  //  Render
 
   return (
     <View style={styles.container}>
@@ -523,7 +520,7 @@ export const ManualInventoryScreen = () => {
           </View>
         )}
 
-        {/* ── Campos Extras ─────────────────────────────── */}
+        {/*  Campos Extras */}
         <View style={styles.section}>
           <Text style={styles.label}>Adicionar Campos Extras (Opcional)</Text>
           <Text style={localStyles.hint}>
@@ -559,7 +556,7 @@ export const ManualInventoryScreen = () => {
           </View>
         </View>
 
-        {/* ── Itens Patrimoniais ─────────────────────────────── */}
+        {/*  Itens Patrimoniais  */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.label}>Itens Patrimoniais *</Text>
@@ -694,7 +691,7 @@ export const ManualInventoryScreen = () => {
   );
 };
 
-// ─── Sub-componente: Custom Dialog ───────────────────────────────────────────
+//  Sub-componente: Custom Dialog 
 
 const CustomDialog = ({ config }: { config: DialogConfig }) => {
   if (!config.visible) return null;

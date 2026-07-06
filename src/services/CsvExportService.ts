@@ -1,6 +1,4 @@
 /**
- * CSVExportService.ts
- *
  * Gera e compartilha CSVs do inventário via expo-sharing.
  * Três exports disponíveis:
  * - exportFound()    → itens escaneados com timestamps
@@ -15,14 +13,13 @@ import { AssetItem, InventorySchema, isScannedItem, Result, UnexpectedItem } fro
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 import { handleServiceError } from '../utils/errorUtils';
 
-// ─── Tipagem Auxiliar ─────────────────────────────────────────────────────────
 
 // Tipo unificado para o exportador lidar com itens originais e sobras na mesma lista
 type ExportableItem = AssetItem & {
   isUnexpected?: boolean;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 /** Escapa campo para CSV (RFC 4180) */
 function csvField(value: string | number | null | undefined): string {

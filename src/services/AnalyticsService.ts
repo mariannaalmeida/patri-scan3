@@ -1,6 +1,5 @@
 /**
- * AnalyticsService.ts
- *
+
  * Camada de dados pura — sem I/O, sem navegação.
  * Recebe um Inventory e devolve métricas prontas para
  * ReportService, ChartService e as telas de relatório.
@@ -15,7 +14,7 @@ import {
 } from '../types/types';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../utils/dateUtils';
 
-// ─── Tipos de saída ──────────────────────────────────────────────────────────
+// Tipos de saída
 
 export interface OverallStats {
   total: number;
@@ -83,7 +82,7 @@ export class AnalyticsService {
     };
   }
 
-  // ─── Overall ───────────────────────────────────────────────────────────────
+  // Overall
 
   private static computeOverall(
     inventory: Inventory,
@@ -126,7 +125,7 @@ export class AnalyticsService {
     };
   }
 
-  // ─── Timeline ──────────────────────────────────────────────────────────────
+  // Timeline
 
   private static computeTimeline(
     foundItems: ScannedAssetItem[],
@@ -153,7 +152,7 @@ export class AnalyticsService {
       isUnexpected: true,
     }));
 
-    // Junta tudo, ordena cronologicamente e calcula o delta em minutos
+    // Junta e ordena cronologicamente e calcula o delta em minutos
     return [...foundEvents, ...unexpectedEvents]
       .sort((a, b) => new Date(a.scanDate).getTime() - new Date(b.scanDate).getTime())
       .map((event) => {
@@ -165,7 +164,7 @@ export class AnalyticsService {
       });
   }
 
-  // ─── Agrupamento por campo ─────────────────────────────────────────────────
+  // Agrupamento por campo
 
   private static computeByGroup(inventory: Inventory, field: 'location'): GroupStat[] {
     const groups = new Map<string, { total: number; found: number; pending: number }>();
@@ -210,7 +209,7 @@ export class AnalyticsService {
       .sort((a, b) => b.total - a.total);
   }
 
-  // ─── Helpers de formatação ─────────────────────────────────────────────────
+  //  Helpers de formatação
 
   static formatDate(iso: string): string {
     return formatDisplayDate(iso);

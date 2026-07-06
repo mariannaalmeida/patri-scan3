@@ -1,6 +1,4 @@
 /**
- * ReportDetailScreen.tsx
- *
  * Relatório completo de um inventário:
  *   - Gráfico de pizza (encontrados vs. pendentes vs. achados a mais)
  *   - Barra de progresso geral
@@ -9,7 +7,6 @@
  *   - Lista de itens não encontrados
  *   - Itens não listados (fora da lista)
  *   - Histórico de scans
- *
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -73,7 +70,10 @@ export const ReportDetailScreen = () => {
     buttons: [],
   });
 
-  const closeDialog = () => setDialogConfig((prev) => ({ ...prev, visible: false }));
+  const closeDialog = useCallback(
+    () => setDialogConfig((prev) => ({ ...prev, visible: false })),
+    []
+  );
 
   //  Carregamento
   const loadReport = useCallback(async () => {
@@ -81,7 +81,6 @@ export const ReportDetailScreen = () => {
     try {
       const result = await StorageService.loadInventory(inventoryId);
       if (!result.ok) {
-        // Erro crítico: Usa o Dialog para forçar o usuário a voltar
         setDialogConfig({
           visible: true,
           title: 'Erro',
@@ -110,7 +109,7 @@ export const ReportDetailScreen = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [inventoryId, navigation]);
+  }, [inventoryId, navigation, closeDialog]);
 
   useFocusEffect(
     useCallback(() => {
@@ -125,7 +124,7 @@ export const ReportDetailScreen = () => {
         ? ChartService.buildPieChart({
             found: report.overall.found,
             pending: report.overall.pending,
-            unexpected: report.overall.unexpectedCount, // <-- ADICIONADO AQUI
+            unexpected: report.overall.unexpectedCount,
             size: 190,
           })
         : '',
@@ -141,9 +140,7 @@ export const ReportDetailScreen = () => {
   );
 
   //  Navegações
-  const handleGoBack = () => {
-    navigation.goBack();
-  };
+  const handleGoBack = () => navigation.goBack();
 
   const handleGoToInventoryDetail = () => {
     if (report) {
@@ -154,64 +151,54 @@ export const ReportDetailScreen = () => {
     }
   };
 
-  const handleGoToReports = () => {
-    navigation.navigate('Reports');
-  };
-
-  const handleGoToHome = () => {
-    navigation.navigate('Home');
-  };
+  const handleGoToReports = () => navigation.navigate('Reports');
+  const handleGoToHome = () => navigation.navigate('Home');
 
   // Exportações
-
-  // Função ajudante para processar a exportação CSV limpa
-  const executeCSVExport = async (type: 'found' | 'pending' | 'full') => {
-    closeDialog();
-    if (!report) return;
-    setIsExporting(true);
-
-    try {
-      let result;
-      if (type === 'found') {
-        result = await CSVExportService.exportFound(report, schemaRef.current);
-      } else if (type === 'pending') {
-        result = await CSVExportService.exportPending(report, schemaRef.current);
-      } else {
-        result = await CSVExportService.exportFull(report, schemaRef.current);
-      }
-
-      if (!result.ok) {
-        Toast.show({ type: 'error', text1: 'Erro na exportação', text2: result.error.message });
-      } else {
-        Toast.show({ type: 'success', text1: 'Sucesso', text2: 'Arquivo CSV exportado!' });
-      }
-    } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Erro',
-        text2: error instanceof Error ? error.message : 'Erro inesperado',
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   const handleExportCSV = useCallback(() => {
     if (!report) return;
 
-    // Abre o Dialog como um Menu de Opções
+    const doExport = async (type: 'found' | 'pending' | 'full') => {
+      closeDialog();
+      setIsExporting(true);
+      try {
+        let result;
+        if (type === 'found') {
+          result = await CSVExportService.exportFound(report, schemaRef.current);
+        } else if (type === 'pending') {
+          result = await CSVExportService.exportPending(report, schemaRef.current);
+        } else {
+          result = await CSVExportService.exportFull(report, schemaRef.current);
+        }
+
+        if (!result.ok) {
+          Toast.show({ type: 'error', text1: 'Erro na exportação', text2: result.error.message });
+        } else {
+          Toast.show({ type: 'success', text1: 'Sucesso', text2: 'Arquivo CSV exportado!' });
+        }
+      } catch (err) {
+        Toast.show({
+          type: 'error',
+          text1: 'Erro',
+          text2: err instanceof Error ? err.message : 'Erro inesperado',
+        });
+      } finally {
+        setIsExporting(false);
+      }
+    };
+
     setDialogConfig({
       visible: true,
       title: 'Exportar CSV',
       message: 'Selecione o tipo de relatório que deseja exportar:',
       buttons: [
-        { text: 'Encontrados', type: 'primary', onPress: () => executeCSVExport('found') },
-        { text: 'Não encontrados', type: 'primary', onPress: () => executeCSVExport('pending') },
-        { text: 'Completo', type: 'primary', onPress: () => executeCSVExport('full') },
+        { text: 'Encontrados', type: 'primary', onPress: () => doExport('found') },
+        { text: 'Não encontrados', type: 'primary', onPress: () => doExport('pending') },
+        { text: 'Completo', type: 'primary', onPress: () => doExport('full') },
         { text: 'Cancelar', type: 'cancel', onPress: closeDialog },
       ],
     });
-  }, [report]);
+  }, [report, closeDialog]);
 
   const handleExportPDF = useCallback(() => {
     if (!report) return;
@@ -243,7 +230,7 @@ export const ReportDetailScreen = () => {
                   text2: 'PDF exportado com sucesso!',
                 });
               }
-            } catch (error) {
+            } catch {
               Toast.show({
                 type: 'error',
                 text1: 'Erro',
@@ -256,7 +243,7 @@ export const ReportDetailScreen = () => {
         },
       ],
     });
-  }, [report]);
+  }, [report, closeDialog]);
 
   // Loading
   if (isLoading || !report) {
@@ -273,7 +260,6 @@ export const ReportDetailScreen = () => {
   const isComplete = overall.progressPct === 100;
   const hasTimeline = report.scanTimeline.length > 0;
 
-  //  Render
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
@@ -307,7 +293,6 @@ export const ReportDetailScreen = () => {
           >
             <Ionicons name="list-outline" size={22} color={colors.accent} />
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={handleGoToReports}
             style={styles.iconBtn}
@@ -316,7 +301,6 @@ export const ReportDetailScreen = () => {
           >
             <Ionicons name="bar-chart-outline" size={22} color={colors.accent} />
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={handleGoToHome}
             style={styles.iconBtn}
@@ -365,7 +349,6 @@ export const ReportDetailScreen = () => {
               <StatCard label="Total" value={overall.total} />
               <StatCard label="Encontrados" value={overall.found} accent />
               <StatCard label="Pendentes" value={overall.pending} warn={overall.pending > 0} />
-              {/* Adicionando o cartão de Itens Não Listados (Sobras) */}
               <StatCard
                 label="Não Listados"
                 value={overall.unexpectedCount}
@@ -644,11 +627,9 @@ const CustomDialog = ({ config }: { config: DialogConfig }) => {
           <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 12 }}>
             {config.title}
           </Text>
-
           <Text style={{ fontSize: 16, color: colors.textDim, marginBottom: 24, lineHeight: 22 }}>
             {config.message}
           </Text>
-
           <View
             style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 12 }}
           >

@@ -1,6 +1,4 @@
 /**
- * ChartService.ts
- *
  * Gera strings SVG puras para os gráficos do relatório.
  * Não depende de bibliotecas externas — SVG nativo renderiza
  * tanto no react-native-svg (tela) quanto no expo-print (PDF/HTML).
@@ -8,7 +6,7 @@
 
 import { GroupStat, ScanEvent } from './AnalyticsService';
 
-// ─── Paleta (alinhada ao design PatriScan) ────────────────────────────────────
+//  Paleta (alinhada ao design PatriScan)
 
 const C = {
   found: '#00E5A0',
@@ -216,7 +214,7 @@ export class ChartService {
 </svg>`;
   }
 
-  // ─── Barras por grupo ───────────────────────────────────────────────────────
+  //  Barras por grupo
   static buildBarChart(groups: GroupStat[], width = 320, height = 160, maxGroups = 8): string {
     const data = groups.slice(0, maxGroups);
 

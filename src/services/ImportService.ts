@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import Papa from 'papaparse';
+import { TextDecoder } from 'text-encoding';
 import {
   AssetItem,
   AssetItemBase,
@@ -54,8 +55,7 @@ const WIN1252_EXTENSIONS = [
 ];
 
 /**
- * Decodifica Uint8Array  para string usando as regras do Windows-1252.
- * Decodifica bytes Windows-1252
+ * Decodifica Uint8Array para string usando as regras do Windows-1252.
  */
 function decodeWindows1252(bytes: Uint8Array): string {
   const chars = new Array(bytes.length);
@@ -76,22 +76,30 @@ function decodeWindows1252(bytes: Uint8Array): string {
 function decodeCSV(arrayBuffer: ArrayBuffer): string {
   const bytes = new Uint8Array(arrayBuffer);
 
+  // BOM UTF-8
   if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     return new TextDecoder('utf-8').decode(bytes);
   }
 
   try {
-    return new TextDecoder('utf-8', {
-      fatal: true,
-    }).decode(bytes);
+    // Tenta UTF-8 puro (falha se houver bytes inválidos)
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
+    // Tenta Windows-1252 (comum em português)
     try {
       return new TextDecoder('windows-1252').decode(bytes);
     } catch {
-      return decodeWindows1252(bytes);
+      // Tenta ISO-8859-1 (Latin-1) antes do fallback manual
+      try {
+        return new TextDecoder('ISO-8859-1').decode(bytes);
+      } catch {
+        // Último recurso: implementação manual do Windows-1252
+        return decodeWindows1252(bytes);
+      }
     }
   }
 }
+
 /**
  * Detecta o delimitador do CSV baseado na contagem de caracteres
  */
@@ -113,42 +121,32 @@ export class ImportService {
       raw: string;
     }>
   > {
-    return handleServiceError(
-      async () => {
-        // 1. Instancia o arquivo usando a nova API
-        const file = new File(uri);
+    return handleServiceError(async () => {
+      const file = new File(uri);
+      const arrayBuffer = await file.arrayBuffer();
+      const textContent = decodeCSV(arrayBuffer);
 
-        // 2. Lê diretamente como ArrayBuffer (padrão Web implementado pelo Expo)
-        // Código com TextDecoder (recomendado)
-        const arrayBuffer = await file.arrayBuffer();
-        const textContent = decodeCSV(arrayBuffer);
+      const delimiter = detectDelimiter(textContent);
 
-        // 3. Detecta o delimitador
-        const delimiter = detectDelimiter(textContent);
-
-        // 6. Parse com PapaParse
-        return new Promise((resolve, reject) => {
-          Papa.parse(textContent, {
-            header: true,
-            delimiter,
-            skipEmptyLines: true,
-            transformHeader: (header: string) => header.trim(),
-            complete: (results) => {
-              resolve({
-                headers: results.meta.fields || [],
-                data: results.data as Record<string, string>[],
-                raw: textContent,
-              });
-            },
-            error: (error: Error) => {
-              reject(new Error(`Erro ao parsear CSV: ${error.message}`));
-            },
-          });
+      return new Promise((resolve, reject) => {
+        Papa.parse(textContent, {
+          header: true,
+          delimiter,
+          skipEmptyLines: true,
+          transformHeader: (header: string) => header.trim(),
+          complete: (results) => {
+            resolve({
+              headers: results.meta.fields || [],
+              data: results.data as Record<string, string>[],
+              raw: textContent,
+            });
+          },
+          error: (error: Error) => {
+            reject(new Error(`Erro ao parsear CSV: ${error.message}`));
+          },
         });
-      },
-      'IMPORT_PARSE_FAILED',
-      { fileUri: uri }
-    );
+      });
+    }, 'IMPORT_PARSE_FAILED');
   }
 
   /**
@@ -205,7 +203,7 @@ export class ImportService {
           bestConfidence = 80;
         }
         if (bestConfidence < 60) {
-          const headerWords = lowerHeader.split(/[\s_\-]+/);
+          const headerWords = lowerHeader.split(/[\s_-]+/); // <-- escape desnecessário removido
           for (const word of headerWords) {
             if (keywords.some((kw) => kw.includes(word) || word.includes(kw))) {
               bestField = field as MappableField;
@@ -259,15 +257,14 @@ export class ImportService {
       });
     }
 
-    const codeEntry = Object.entries(mapping).find(([_, f]) => f === 'code');
+    const codeEntry = Object.entries(mapping).find(([, f]) => f === 'code'); // <-- [, f] para evitar unused var
     if (!codeEntry) {
-      // Esse caso já é tratado no início da função, mas por segurança:
       result.errors.push({ row: 0, field: 'code', message: 'Mapeamento de código inválido.' });
       return result;
     }
     const colCode = codeEntry[0];
-    const colDesc = Object.entries(mapping).find(([_, f]) => f === 'description')?.[0];
-    const colValue = Object.entries(mapping).find(([_, f]) => f === 'value')?.[0];
+    const colDesc = Object.entries(mapping).find(([, f]) => f === 'description')?.[0];
+    const colValue = Object.entries(mapping).find(([, f]) => f === 'value')?.[0];
 
     data.forEach((row, idx) => {
       const rowNum = idx + 2;
