@@ -479,7 +479,7 @@ export const ImportInventoryScreen = () => {
               {isLoading ? (
                 <ActivityIndicator color="#000" />
               ) : (
-                <Text style={styles.actionButtonText}>Selecionar Arquivo CSV</Text>
+                <Text style={styles.actionButtonText}>Selecionar arquivo CSV</Text>
               )}
             </TouchableOpacity>
 

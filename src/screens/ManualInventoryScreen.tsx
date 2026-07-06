@@ -246,6 +246,8 @@ export const ManualInventoryScreen = () => {
 
   // ─── Salvar ──────────────────────────────────────────────────────────────────
 
+  // ─── Salvar ──────────────────────────────────────────────────────────────────
+
   const handleSave = async () => {
     if (!isUnexpectedMode && !inventoryName.trim()) {
       Toast.show({ type: 'error', text1: 'Erro', text2: 'Digite um nome para o inventário.' });
@@ -257,27 +259,29 @@ export const ManualInventoryScreen = () => {
       Toast.show({
         type: 'error',
         text1: 'Erro',
-        text2: 'Todos os itens precisam ter um código preenchido.',
+        text2: 'Todos os itens precisam de ter um código preenchido.',
       });
       return;
     }
 
-    const codes = items.map((item) => item.code.trim().toUpperCase());
-    const uniqueCodes = new Set(codes);
-    if (uniqueCodes.size !== codes.length) {
+    // 1. Verifica duplicados DENTRO do formulário atual
+    const formCodes = items.map((item) => item.code.trim().toUpperCase());
+    const uniqueFormCodes = new Set(formCodes);
+    if (uniqueFormCodes.size !== formCodes.length) {
       Toast.show({
         type: 'error',
         text1: 'Erro',
-        text2: 'Existem códigos de patrimônio duplicados.',
+        text2: 'Digitou códigos duplicados neste formulário.',
       });
       return;
     }
+
     setIsLoading(true);
     try {
       const now = toISODate(new Date());
       const assetItems: AssetItem[] = items.map((item) => {
         const base = {
-          code: item.code.trim(),
+          code: item.code.trim().toUpperCase(), // Força maiúsculas
           description: item.description.trim() || undefined,
           location: item.location.trim() || inventoryLocation.trim() || undefined,
           value: parseBrazilianCurrencySafe(item.value),
@@ -301,11 +305,38 @@ export const ManualInventoryScreen = () => {
 
         const inventory = loadResult.value;
 
+        // 2. NOVO: Verifica colisões contra itens JÁ EXISTENTES na base de dados
+        const existingRegularCodes = new Set(inventory.items.map((i) => i.code.toUpperCase()));
+        const existingUnexpectedCodes = new Set(
+          (inventory.unexpectedItems || []).map((i) => i.code.toUpperCase())
+        );
+
+        for (const code of formCodes) {
+          if (existingRegularCodes.has(code)) {
+            Toast.show({
+              type: 'error',
+              text1: 'Código já existe',
+              text2: `O código ${code} pertence à lista original do inventário. Escaneie-o normalmente.`,
+            });
+            setIsLoading(false);
+            return; // Interrompe a execução
+          }
+          if (existingUnexpectedCodes.has(code)) {
+            Toast.show({
+              type: 'error',
+              text1: 'Código Duplicado',
+              text2: `A sobra física ${code} já foi registada anteriormente.`,
+            });
+            setIsLoading(false);
+            return; // Interrompe a execução
+          }
+        }
+
         inventory.metadata.lastModified = now;
 
-        // ─── NOVO: Mapeia para UnexpectedItem[] ─────────────────────
+        // Mapeia para UnexpectedItem[]
         const unexpectedItemsToAdd: UnexpectedItem[] = items.map((item) => ({
-          code: item.code.trim(),
+          code: item.code.trim().toUpperCase(), // Força maiúsculas aqui também
           scannedAt: now,
           description: item.description.trim() || undefined,
           location: item.location.trim() || inventoryLocation.trim() || undefined,
@@ -343,7 +374,7 @@ export const ManualInventoryScreen = () => {
                 type: 'primary',
                 onPress: () => {
                   closeDialog();
-                  navigation.goBack(); // Volta para a tela anterior (Scanner ou Detalhes)
+                  navigation.goBack(); // Volta para o ecrã anterior
                 },
               },
             ],
@@ -352,7 +383,7 @@ export const ManualInventoryScreen = () => {
           throw new Error(saveResult.error?.message ?? 'Erro desconhecido ao atualizar inventário');
         }
       } else {
-        // FLUXO A: Criar um inventário do zero (Código original)
+        // FLUXO A: Criar um inventário do zero
         const id = StorageService.generateInventoryId();
         const schema = generateBasicSchema(
           assetItems,
@@ -449,7 +480,7 @@ export const ManualInventoryScreen = () => {
         {!isUnexpectedMode && (
           /* Nome do Inventário */
           <View style={styles.section}>
-            <Text style={styles.label}>Nome do Inventário *</Text>
+            <Text style={styles.label}>Nome do Inventário </Text>
             <TextInput
               style={styles.input}
               value={inventoryName}
@@ -458,7 +489,7 @@ export const ManualInventoryScreen = () => {
               placeholderTextColor={colors.textDim}
               accessibilityLabel="Nome do Inventário "
             />
-            <Text style={styles.label}>Localização do Inventário</Text>
+            <Text style={styles.label}>Localização do Inventário (opcional)</Text>
             <TextInput
               style={styles.input}
               value={inventoryLocation}
@@ -467,7 +498,7 @@ export const ManualInventoryScreen = () => {
               placeholderTextColor={colors.textDim}
               accessibilityLabel="Localização do Inventário"
             />
-            <Text style={styles.label}>Ano de Referência</Text>
+            <Text style={styles.label}>Ano de Referência (opcioanal)</Text>
             <TextInput
               style={styles.input}
               value={inventoryYear}

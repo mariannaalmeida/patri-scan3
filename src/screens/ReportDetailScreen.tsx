@@ -2,7 +2,7 @@
  * ReportDetailScreen.tsx
  *
  * Relatório completo de um inventário:
- *   - Gráfico de pizza (encontrados vs. pendentes)
+ *   - Gráfico de pizza (encontrados vs. pendentes vs. achados a mais)
  *   - Barra de progresso geral
  *   - Linha do tempo de scans
  *   - Lista de itens encontrados
@@ -125,6 +125,7 @@ export const ReportDetailScreen = () => {
         ? ChartService.buildPieChart({
             found: report.overall.found,
             pending: report.overall.pending,
+            unexpected: report.overall.unexpectedCount, // <-- ADICIONADO AQUI
             size: 190,
           })
         : '',
@@ -364,6 +365,12 @@ export const ReportDetailScreen = () => {
               <StatCard label="Total" value={overall.total} />
               <StatCard label="Encontrados" value={overall.found} accent />
               <StatCard label="Pendentes" value={overall.pending} warn={overall.pending > 0} />
+              {/* Adicionando o cartão de Itens Não Listados (Sobras) */}
+              <StatCard
+                label="Não Listados"
+                value={overall.unexpectedCount}
+                warn={overall.unexpectedCount > 0}
+              />
             </View>
           </View>
 

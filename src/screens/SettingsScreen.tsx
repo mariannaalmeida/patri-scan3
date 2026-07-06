@@ -2,7 +2,7 @@
  * SettingsScreen.tsx
  *
  * Tela de configurações globais do aplicativo.
- * Permite alternar preferências de scanner (som, vibração, flash)
+ * Permite alternar preferências de scanner (som, vibração)
  * e oferece ações de gerenciamento de dados (limpeza total).
  */
 
@@ -29,24 +29,17 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 export const SettingsScreen = () => {
   const navigation = useNavigation<NavProp>();
 
-  // Estado local das configurações (com valores padrão seguros)
-  const [settings, setSettings] = useState<AppSettings>({
+  // Estado local – apenas vibração (sem modo escuro, sem flash)
+  const [vibrationEnabled, setVibrationEnabled] = useState(true);
 
-    vibrationEnabled: true,
-    flashEnabled: false,
-    theme: 'light',
-  });
-
-  // Carregar configurações reais do banco ao abrir a tela
+  // Carregar configuração real do banco ao abrir a tela
   useEffect(() => {
     const loadSettings = async () => {
       try {
         if (typeof StorageService.getSettings === 'function') {
           const result = await StorageService.getSettings();
-
-          // Verifica se o Result deu "ok" e se trouxe um valor
           if (result.ok && result.value) {
-            setSettings(result.value);
+            setVibrationEnabled(result.value.vibrationEnabled ?? true);
           }
         }
       } catch (error) {
@@ -56,49 +49,31 @@ export const SettingsScreen = () => {
     loadSettings();
   }, []);
 
-  // Atualizar e salvar configuração
-  // Altere a assinatura da função para ignorar o 'theme'
-  const toggleSetting = async (key: 'vibrationEnabled' | 'flashEnabled') => {
-    const newSettings = { ...settings, [key]: !settings[key] };
-    setSettings(newSettings);
+  // Atualizar e salvar vibração
+  const toggleVibration = async () => {
+    const newValue = !vibrationEnabled;
+    setVibrationEnabled(newValue);
 
     try {
       if (typeof StorageService.saveSettings === 'function') {
+        // Monta um AppSettings completo (campos obsoletos com valores padrão)
+        const newSettings: AppSettings = {
+          vibrationEnabled: newValue,
+          flashEnabled: false,
+          theme: 'light',
+        };
         await StorageService.saveSettings(newSettings);
       }
-    } catch (error) {
+    } catch (_) {
       Alert.alert('Erro', 'Não foi possível salvar a configuração.');
-      // Usar uma função de callback no setState é mais seguro para reverter
-      setSettings((prev) => ({ ...prev, [key]: !newSettings[key] }));
-    }
-  };
-
-  const toggleTheme = async () => {
-    const previousTheme = settings.theme;
-
-    const newSettings: AppSettings = {
-      ...settings,
-      theme: previousTheme === 'dark' ? 'light' : 'dark',
-    };
-
-    setSettings(newSettings);
-
-    try {
-      await StorageService.saveSettings(newSettings);
-    } catch {
-      Alert.alert('Erro', 'Não foi possível salvar a configuração.');
-
-      setSettings((prev) => ({
-        ...prev,
-        theme: previousTheme,
-      }));
+      setVibrationEnabled(!newValue); // reverte em caso de erro
     }
   };
 
   // ─── Botão do Pânico (Zerar App) ───
   const handleClearAllData = () => {
     Alert.alert(
-      ' ZERAR APLICATIVO',
+      'ZERAR APLICATIVO',
       'Tem certeza absoluta? Isso apagará TODOS os inventários, itens e relatórios. Essa ação NÃO pode ser desfeita.',
       [
         { text: 'Cancelar', style: 'cancel' },
@@ -107,11 +82,10 @@ export const SettingsScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Limpa os dados via StorageService
               await StorageService.clearAllData();
               Alert.alert('Sucesso', 'Todos os dados foram apagados.');
-              navigation.replace('Home'); // Volta pra Home limpa
-            } catch (error) {
+              navigation.replace('Home');
+            } catch (_) {
               Alert.alert('Erro', 'Não foi possível apagar os dados.');
             }
           },
@@ -126,10 +100,8 @@ export const SettingsScreen = () => {
 
   return (
     <View style={commonStyles.container}>
-      <StatusBar
-        barStyle={settings.theme === 'dark' ? 'light-content' : 'dark-content'}
-        backgroundColor={colors.bg}
-      />
+      {/* StatusBar fixo – tema claro sempre (sem modo escuro) */}
+      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -153,30 +125,8 @@ export const SettingsScreen = () => {
               icon="phone-portrait-outline"
               label="Vibração"
               description="Vibrar ao ler um código de barras"
-              value={settings.vibrationEnabled}
-              onValueChange={() => toggleSetting('vibrationEnabled')}
-            />
-            <Divider />
-            <SettingToggle
-              icon="flashlight-outline"
-              label="Lanterna (Flash)"
-              description="Manter a lanterna ligada no scanner"
-              value={settings.flashEnabled}
-              onValueChange={() => toggleSetting('flashEnabled')}
-            />
-          </View>
-        </View>
-
-        {/* ── Seção: Aparência ── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>APARÊNCIA</Text>
-          <View style={styles.card}>
-            <SettingToggle
-              icon="moon-outline"
-              label="Modo Escuro"
-              description="Usar tema escuro no aplicativo"
-              value={settings.theme === 'dark'}
-              onValueChange={toggleTheme}
+              value={vibrationEnabled}
+              onValueChange={toggleVibration}
             />
           </View>
         </View>
@@ -243,8 +193,6 @@ export const SettingToggle = ({
     />
   </View>
 );
-
-const Divider = () => <View style={styles.divider} />;
 
 // ─── Estilos Locais ──────────────────────────────────────────────────────────
 
@@ -316,11 +264,6 @@ const styles = StyleSheet.create({
   settingDesc: {
     fontSize: 13,
     color: colors.textDim,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginLeft: 64, // Alinha com o texto, ignorando o ícone
   },
   dangerRow: {
     flexDirection: 'row',

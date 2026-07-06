@@ -291,14 +291,18 @@ export class StorageService {
     found: boolean,
     scanDate?: Date | string
   ): Promise<Result<{ updatedItem: AssetItem }>> {
-    // ← MUDOU O RETORNO
     return handleServiceError(
       async () => {
         const loadResult = await this.loadInventory(inventoryId);
         if (!loadResult.ok) throw loadResult.error;
 
         const inventory = loadResult.value;
-        const index = inventory.items.findIndex((i) => i.code === itemCode);
+
+        // Normaliza o código para busca case-insensitive e sem espaços
+        const normalizedCode = itemCode.trim().replace(/\s+/g, '').toUpperCase();
+        const index = inventory.items.findIndex(
+          (i) => i.code.trim().replace(/\s+/g, '').toUpperCase() === normalizedCode
+        );
 
         if (index === -1) {
           throw new Error(`Item com código "${itemCode}" não encontrado`);

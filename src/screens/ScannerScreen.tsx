@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -34,14 +34,16 @@ interface AlertBanner {
   message: string;
 }
 
+declare const __DEV__: boolean;
+
 export const ScannerScreen = () => {
   const navigation = useNavigation<ScannerNavProp>();
   const route = useRoute<ScannerRouteProp>();
   const { inventoryId } = route.params ?? {};
+  const isFocused = useIsFocused();
 
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [mode, setMode] = useState<ScanMode>('camera');
   const [permission, requestPermission] = useCameraPermissions();
@@ -50,8 +52,6 @@ export const ScannerScreen = () => {
 
   const [pendingItem, setPendingItem] = useState<AssetItem | null>(null);
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
-
-  // ──────────────────────────────────────────────────────────────────────
 
   const [alerts, setAlerts] = useState<AlertBanner[]>([]);
   const alertCounter = useRef(0);
@@ -66,26 +66,46 @@ export const ScannerScreen = () => {
 
   const confirmingRef = useRef(false);
 
-  // Limpeza de todos os timeouts ao desmontar
+  // Quando a tela ganha foco, reseta bloqueios e recarrega inventário
   useEffect(() => {
-    return () => {
-      alertTimeouts.current.forEach((timeout) => clearTimeout(timeout));
-      alertTimeouts.current.clear();
+    if (isFocused) {
+      scanCooldown.current = false;
+      lastScannedCode.current = '';
       if (scanCooldownTimeout.current) {
         clearTimeout(scanCooldownTimeout.current);
+        scanCooldownTimeout.current = null;
+      }
+      // Recarrega inventário para refletir itens não listados adicionados
+      if (inventoryId) {
+        StorageService.loadInventory(inventoryId).then((result) => {
+          if (result.ok) setInventory(result.value);
+        });
+      }
+    }
+  }, [isFocused, inventoryId]);
+
+  // Limpeza de timeouts ao desmontar
+  useEffect(() => {
+    const currentAlertTimeouts = alertTimeouts.current;
+    const currentScanCooldownTimeout = scanCooldownTimeout.current;
+    return () => {
+      currentAlertTimeouts.forEach((timeout) => clearTimeout(timeout));
+      currentAlertTimeouts.clear();
+      if (currentScanCooldownTimeout) {
+        clearTimeout(currentScanCooldownTimeout);
       }
     };
   }, []);
 
-  // Carregar inventário com guarda e garantia de loading state
+  // Carregar inventário inicial
   useEffect(() => {
     const loadInventory = async () => {
       if (!inventoryId) {
         const errMsg = 'ID do inventário não fornecido na navegação.';
-        setError(errMsg);
         setLoading(false);
-        Alert.alert('Erro de Parâmetro', errMsg);
-        navigation.goBack();
+        Alert.alert('Erro de Parâmetro', errMsg, [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
         return;
       }
 
@@ -93,17 +113,15 @@ export const ScannerScreen = () => {
         const result = await StorageService.loadInventory(inventoryId);
         if (result.ok) {
           setInventory(result.value);
-          setError(null);
         } else {
-          setError(result.error.message);
-          Alert.alert('Erro', result.error.message);
-          navigation.goBack();
+          Alert.alert('Erro', result.error.message, [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
         }
-      } catch (err) {
-        const unexpectedError = 'Falha inesperada ao tentar carregar o inventário.';
-        setError(unexpectedError);
-        Alert.alert('Erro Crítico', unexpectedError);
-        navigation.goBack();
+      } catch {
+        Alert.alert('Erro Crítico', 'Falha inesperada ao carregar o inventário.', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
       } finally {
         setLoading(false);
       }
@@ -116,14 +134,12 @@ export const ScannerScreen = () => {
     ? ScannerService.getProgress(inventory)
     : { scanned: 0, total: 0, percentage: 0, remaining: 0 };
 
-  // Permissão de câmera
   useEffect(() => {
     if (mode === 'camera' && permission && !permission.granted) {
       requestPermission();
     }
   }, [mode, permission, requestPermission]);
 
-  // Alertas com controle de memória
   const showAlert = useCallback((type: AlertBanner['type'], message: string) => {
     const id = ++alertCounter.current;
     setAlerts((prev) => [...prev.slice(-2), { id, type, message }]);
@@ -136,7 +152,6 @@ export const ScannerScreen = () => {
     alertTimeouts.current.set(id, timeoutId);
   }, []);
 
-  // Animação do último item escaneado
   const animateLastItem = useCallback(() => {
     lastItemAnim.setValue(0);
     Animated.spring(lastItemAnim, {
@@ -147,9 +162,6 @@ export const ScannerScreen = () => {
     }).start();
   }, [lastItemAnim]);
 
-  // ──────────────────────────────────────────────────────────────────────
-
-  // Lógica de scan
   const handleCodeScanned = useCallback(
     (code: string) => {
       if (!inventory || isConfirmVisible || pendingItem) return;
@@ -193,25 +205,21 @@ export const ScannerScreen = () => {
             {
               text: 'Registrar',
               onPress: () => {
-                // Pausa o scanner brevemente
                 scanCooldown.current = true;
-
-                // Navega para a tela manual passando os dados E o código escaneado
                 navigation.navigate('ManualInventory', {
                   inventoryId: inventory.metadata.id,
                   inventoryName: inventory.metadata.name,
-                  prefilledCode: normalizedCode, // <--- Enviando o código para a tela!
-                } as any); // (o 'as any' evita erro do TypeScript se prefilledCode não estiver no types.ts)
+                  prefilledCode: normalizedCode,
+                } as any);
               },
             },
           ]
         );
       }
     },
-    [inventory, isConfirmVisible, pendingItem, showAlert]
+    [inventory, isConfirmVisible, pendingItem, showAlert, navigation]
   );
 
-  // Confirmação do scan
   const handleConfirm = useCallback(async () => {
     if (!pendingItem || !inventory || confirmingRef.current) return;
 
@@ -233,8 +241,6 @@ export const ScannerScreen = () => {
 
       if (result.ok) {
         const { updatedItem } = result.value;
-
-        // 1. MONTAMOS O NOVO INVENTÁRIO AQUI FORA
         const newItems = inventory.items.map((i) =>
           i.code === updatedItem.code ? updatedItem : i
         );
@@ -244,10 +250,7 @@ export const ScannerScreen = () => {
           items: newItems,
         };
 
-        // 2. ATUALIZAMOS O ESTADO UMA ÚNICA VEZ (Função 100% pura)
         setInventory(updatedInventory);
-
-        // 3. EFEITOS VISUAIS E ANIMAÇÕES
         setLastScanned(updatedItem);
         animateLastItem();
         showAlert(
@@ -255,7 +258,6 @@ export const ScannerScreen = () => {
           `${updatedItem.description || updatedItem.code} escaneado com sucesso.`
         );
 
-        // 4. VERIFICAÇÃO DE PROGRESSO USANDO A NOSSA VARIÁVEL LOCAL
         const newProgress = ScannerService.getProgress(updatedInventory);
 
         if (newProgress.remaining === 0) {
@@ -287,15 +289,13 @@ export const ScannerScreen = () => {
     } finally {
       confirmingRef.current = false;
     }
-  }, [pendingItem, inventory, animateLastItem, showAlert, navigation, inventoryId]);
+  }, [pendingItem, inventory, animateLastItem, showAlert, navigation]);
 
-  // Cancelar confirmação
   const handleCancelConfirm = useCallback(() => {
     setIsConfirmVisible(false);
     setPendingItem(null);
   }, []);
 
-  // Input manual
   const handleManualSubmit = useCallback(() => {
     if (!manualCode.trim()) return;
     handleCodeScanned(manualCode);
@@ -311,7 +311,6 @@ export const ScannerScreen = () => {
     navigation.navigate('Home');
   };
 
-  // Renderização condicional de loading / erro
   if (loading) {
     return (
       <View style={commonStyles.loadingContainer}>
@@ -432,14 +431,21 @@ export const ScannerScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Área Principal (Câmera ou Manual) */}
+      {/* Área Principal - Renderiza câmera apenas se focado */}
       <View style={scannerStyles.mainArea}>
         {mode === 'camera' ? (
-          <CameraArea
-            permission={permission}
-            onRequestPermission={requestPermission}
-            onCodeScanned={handleCodeScanned}
-          />
+          isFocused ? (
+            <CameraArea
+              permission={permission}
+              onRequestPermission={requestPermission}
+              onCodeScanned={handleCodeScanned}
+            />
+          ) : (
+            <View style={scannerStyles.cameraPlaceholder}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={scannerStyles.cameraPlaceholderText}>Retomando câmera…</Text>
+            </View>
+          )
         ) : (
           <ManualArea
             value={manualCode}
@@ -513,7 +519,7 @@ export const ScannerScreen = () => {
   );
 };
 
-// ─── Subcomponentes
+// ─── Subcomponentes ──────────────────────────────────────────────────────────
 
 interface CameraAreaProps {
   permission: { granted: boolean } | null;
@@ -658,8 +664,8 @@ const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: Confirm
                   }).format(item.value)}
                 />
               ) : null}
-              {customFieldsEntries.map(([key, value]) => (
-                <DetailRow key={key} icon="star-outline" label={key} value={value} />
+              {customFieldsEntries.map(([key, val]) => (
+                <DetailRow key={key} icon="star-outline" label={key} value={val} />
               ))}
             </ScrollView>
           )}

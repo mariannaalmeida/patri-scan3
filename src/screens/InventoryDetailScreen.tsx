@@ -269,6 +269,11 @@ export const InventoryDetailScreen = () => {
             <StatCard label="Total" value={progress.total} />
             <StatCard label="Escaneados" value={progress.scanned} variant="accent" />
             <StatCard label="Pendentes" value={progress.remaining} variant="warn" />
+            <StatCard
+              label="Sobras"
+              value={unexpectedCount}
+              variant={unexpectedCount > 0 ? 'warn' : 'default'}
+            />
           </View>
 
           <View style={inventoryDetailStyles.progressRow}>

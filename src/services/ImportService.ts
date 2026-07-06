@@ -170,7 +170,18 @@ export class ImportService {
    */
   static suggestColumnMapping(headers: string[]): ColumnMapping[] {
     const fieldKeywords: Partial<Record<MappableField, string[]>> = {
-      code: ['código', 'codigo', 'code', 'patrimônio', 'patrimonio', 'tombo', 'id', 'registro'],
+      code: [
+        'código',
+        'codigo',
+        'cod bem',
+        'cód bem',
+        'code',
+        'patrimônio',
+        'patrimonio',
+        'tombo',
+        'id',
+        'registro',
+      ],
       description: ['descrição', 'descricao', 'description', 'nome', 'item', 'produto', 'bem'],
       location: ['local', 'localização', 'localizacao', 'location', 'sala', 'andar', 'prédio'],
       value: ['valor', 'value', 'preço', 'preco', 'custo', 'montante'],

@@ -385,6 +385,11 @@ const ReportCard = React.memo(({ row, isExporting, onView, onCSV, onPDF }: Repor
           <MiniStat label="Total" value={overall.total} />
           <MiniStat label="Encontrados" value={overall.found} accent />
           <MiniStat label="Pendentes" value={overall.pending} warn={overall.pending > 0} />
+          <MiniStat
+            label="Sobras"
+            value={overall.unexpectedCount}
+            warn={overall.unexpectedCount > 0}
+          />
         </View>
 
         <View style={styles.progressTrack}>

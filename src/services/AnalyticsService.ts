@@ -168,25 +168,44 @@ export class AnalyticsService {
   // ─── Agrupamento por campo ─────────────────────────────────────────────────
 
   private static computeByGroup(inventory: Inventory, field: 'location'): GroupStat[] {
-    const groups = new Map<string, { total: number; found: number }>();
+    const groups = new Map<string, { total: number; found: number; pending: number }>();
 
+    // 1. Contabiliza os itens originais (previstos)
     for (const item of inventory.items) {
       const key = item[field]?.trim() || '(não informado)';
-      const existing = groups.get(key) ?? { total: 0, found: 0 };
-      existing.total++;
+      const existing = groups.get(key) ?? { total: 0, found: 0, pending: 0 };
 
-      if (item.found) existing.found++;
+      existing.total++;
+      if (item.found) {
+        existing.found++;
+      } else {
+        existing.pending++;
+      }
 
       groups.set(key, existing);
     }
 
+    // 2. Contabiliza as sobras físicas (itens não listados)
+    const unexpected = inventory.unexpectedItems ?? [];
+    for (const item of unexpected) {
+      const key = item[field]?.trim() || '(não informado)';
+      const existing = groups.get(key) ?? { total: 0, found: 0, pending: 0 };
+
+      // Sobras aumentam o total físico da sala e já contam como "encontrados"
+      existing.total++;
+      existing.found++;
+
+      groups.set(key, existing);
+    }
+
+    // 3. Formata para o retorno
     return Array.from(groups.entries())
-      .map(([label, { total, found }]) => ({
+      .map(([label, stats]) => ({
         label,
-        total,
-        found,
-        pending: total - found,
-        progressPct: total > 0 ? Math.round((found / total) * 100) : 0,
+        total: stats.total,
+        found: stats.found,
+        pending: stats.pending,
+        progressPct: stats.total > 0 ? Math.round((stats.found / stats.total) * 100) : 0,
       }))
       .sort((a, b) => b.total - a.total);
   }
