@@ -1,5 +1,4 @@
 /**
- * SettingsScreen.tsx
  *
  * Tela de configurações globais do aplicativo.
  * Permite alternar preferências de scanner (som, vibração)
@@ -23,6 +22,7 @@ import {
 import { StorageService } from '../services/StorageService';
 import { colors, commonStyles } from '../styles/theme';
 import { AppSettings, RootStackParamList } from '../types/types';
+
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 

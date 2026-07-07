@@ -68,18 +68,12 @@ Desenvolvido com **React Native** e **Expo**, utiliza a câmera do dispositivo p
 ## ⚙️ Instalação
 
 ```bash
-git clone https://github.com/seu-usuario/patri-scan3.git
+git clone https://github.com/mariannaalmeida/patri-scan3.git
 cd patri-scan3
 npm install
 
-
-## ▶️ Executando o app
+▶️ Executando o app
 
 ```bash
-npx expo start
+npx expo start -c
 
-
-Escaneie o QR code com o app Expo Go.
-Se os dispositivos não estiverem na mesma rede Wi‑Fi, use:
-
-npx expo start --tunnel

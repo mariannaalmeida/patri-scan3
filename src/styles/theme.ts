@@ -2569,56 +2569,7 @@ export const manualInventoryStyles = StyleSheet.create({
   },
 });
 
-export const settingsStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'ios' ? 56 : 36,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ffffff0A',
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backBtnText: {
-    fontSize: 22,
-    color: colors.text,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#ffffff0A',
-  },
-  menuItemText: {
-    fontSize: 16,
-    color: colors.text,
-  },
-  menuItemArrow: {
-    fontSize: 16,
-    color: colors.textDim,
-  },
-});
+
 
 export const aboutStyles = StyleSheet.create({
   header: {
@@ -2880,5 +2831,121 @@ export const itemDetailStyles = StyleSheet.create({
   fieldValue: {
     fontSize: 16,
     color: colors.text,
+  },
+});
+
+export const settingsStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 20,
+    backgroundColor: colors.bg,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  section: {
+    marginTop: 24,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textDim,
+    marginBottom: 8,
+    marginLeft: 8,
+    letterSpacing: 1,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  textCol: {
+    flex: 1,
+    marginRight: 12,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  settingDesc: {
+    fontSize: 13,
+    color: colors.textDim,
+  },
+  dangerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  dangerIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.warning + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  dangerTextCol: {
+    flex: 1,
+    marginRight: 12,
+  },
+  dangerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.warning,
+    marginBottom: 2,
+  },
+  dangerDesc: {
+    fontSize: 13,
+    color: colors.textDim,
+  },
+  aboutSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 40,
+    marginBottom: 60,
+  },
+  appName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 12,
+  },
+  appVersion: {
+    fontSize: 13,
+    color: colors.textDim,
+    marginTop: 4,
   },
 });
