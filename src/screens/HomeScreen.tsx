@@ -22,12 +22,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import { StorageService } from '../services/StorageService';
-import { colors, commonStyles, homeStyles } from '../styles/theme';
 import { AssetItem, Inventory, RootStackParamList, UnexpectedItem } from '../types/types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
-
 
 type FlatAsset = (AssetItem | (UnexpectedItem & { found: true })) & {
   inventoryName: string;
@@ -45,6 +44,7 @@ const PAGE_SIZE = 20;
 
 export const HomeScreen = () => {
   const navigation = useNavigation<NavProp>();
+  const { colors, mode, commonStyles, homeStyles } = useTheme();
 
   const [allAssets, setAllAssets] = useState<FlatAsset[]>([]);
   const [inventories, setInventories] = useState<Inventory[]>([]);
@@ -288,7 +288,10 @@ export const HomeScreen = () => {
   if (isLoading) {
     return (
       <View style={commonStyles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+        <StatusBar
+          barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={colors.bg}
+        />
         <ActivityIndicator color={colors.accent} size="large" />
         <Text style={commonStyles.loadingText}>Carregando patrimônio…</Text>
       </View>
@@ -297,7 +300,10 @@ export const HomeScreen = () => {
 
   return (
     <View style={commonStyles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar
+        barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.bg}
+      />
 
       {/* Header */}
       <View style={homeStyles.header}>
@@ -497,64 +503,66 @@ export const HomeScreen = () => {
   );
 };
 
-// ─── Componente de linha de bem ───────────────────────────────────────────────
+//Componente de linha de bem
 
 interface AssetRowProps {
   asset: FlatAsset;
   onPress: () => void;
 }
 
-const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => (
-  <TouchableOpacity
-    style={[homeStyles.itemRow, asset.isScanned && homeStyles.itemRowScanned]}
-    onPress={onPress}
-    activeOpacity={0.7}
-    accessibilityRole="button"
-    accessibilityLabel={`${asset.code} ${asset.description || ''}, ${
-      asset.isScanned ? 'escaneado' : 'pendente'
-    }`}
-  >
-    <View
-      style={[
-        homeStyles.itemIndicator,
-        asset.isScanned && homeStyles.itemIndicatorScanned,
-        asset.isUnexpected && { backgroundColor: colors.warning },
-      ]}
-    />
-    <View style={homeStyles.itemBody}>
-      <View style={homeStyles.itemHeader}>
-        <Text style={homeStyles.itemCode}>{asset.code}</Text>
-        <View style={asset.isScanned ? homeStyles.badgeOk : homeStyles.badgePending}>
-          {asset.isScanned ? (
-            <Ionicons name="checkmark" size={12} color="#0F6E56" />
-          ) : (
-            <Ionicons name="time-outline" size={12} color="#854F0B" />
-          )}
+const AssetRow = React.memo(({ asset, onPress }: AssetRowProps) => {
+  const { colors, homeStyles } = useTheme();
+  return (
+    <TouchableOpacity
+      style={[homeStyles.itemRow, asset.isScanned && homeStyles.itemRowScanned]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${asset.code} ${asset.description || ''}, ${
+        asset.isScanned ? 'escaneado' : 'pendente'
+      }`}
+    >
+      <View
+        style={[
+          homeStyles.itemIndicator,
+          asset.isScanned && homeStyles.itemIndicatorScanned,
+          asset.isUnexpected && { backgroundColor: colors.warning },
+        ]}
+      />
+      <View style={homeStyles.itemBody}>
+        <View style={homeStyles.itemHeader}>
+          <Text style={homeStyles.itemCode}>{asset.code}</Text>
+          <View style={asset.isScanned ? homeStyles.badgeOk : homeStyles.badgePending}>
+            {asset.isScanned ? (
+              <Ionicons name="checkmark" size={12} color="#0F6E56" />
+            ) : (
+              <Ionicons name="time-outline" size={12} color="#854F0B" />
+            )}
+          </View>
         </View>
-      </View>
-      {asset.description && (
-        <Text style={homeStyles.itemDesc} numberOfLines={1}>
-          {asset.description}
-        </Text>
-      )}
-      <View style={homeStyles.itemMeta}>
-        {(asset.location || asset.inventoryLocation) && (
-          <Text style={homeStyles.itemMetaText}>
-            <Ionicons name="location-outline" size={11} />{' '}
-            {asset.location || asset.inventoryLocation}
+        {asset.description && (
+          <Text style={homeStyles.itemDesc} numberOfLines={1}>
+            {asset.description}
           </Text>
         )}
+        <View style={homeStyles.itemMeta}>
+          {(asset.location || asset.inventoryLocation) && (
+            <Text style={homeStyles.itemMetaText}>
+              <Ionicons name="location-outline" size={11} />{' '}
+              {asset.location || asset.inventoryLocation}
+            </Text>
+          )}
 
-        <Text style={homeStyles.itemMetaInv}>
-          <Ionicons name="folder-outline" size={11} /> {asset.inventoryName}
-        </Text>
+          <Text style={homeStyles.itemMetaInv}>
+            <Ionicons name="folder-outline" size={11} /> {asset.inventoryName}
+          </Text>
+        </View>
       </View>
-    </View>
-  </TouchableOpacity>
-));
+    </TouchableOpacity>
+  );
+});
 
-// ─── Modal de filtros ─────────────────────────────────────────────────────────
-
+// Modal de filtros
 interface FilterModalProps {
   visible: boolean;
   filters: ActiveFilters;
@@ -574,55 +582,57 @@ const FilterModal = React.memo(
     onApply,
     onClear,
     onClose,
-  }: FilterModalProps) => (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      {/* CORREÇÃO: overlay sem flex extra, usando estilo absoluto definido em homeStyles.modalOverlay */}
-      <TouchableOpacity
-        style={homeStyles.modalOverlay}
-        activeOpacity={1}
-        onPress={onClose}
-        accessibilityLabel="Fechar filtros"
-      />
-      <View style={homeStyles.modalSheet}>
-        <View style={homeStyles.modalHandle} />
-        <Text style={homeStyles.modalTitle}>Filtros</Text>
+  }: FilterModalProps) => {
+    const { homeStyles } = useTheme();
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <TouchableOpacity
+          style={homeStyles.modalOverlay}
+          activeOpacity={1}
+          onPress={onClose}
+          accessibilityLabel="Fechar filtros"
+        />
+        <View style={homeStyles.modalSheet}>
+          <View style={homeStyles.modalHandle} />
+          <Text style={homeStyles.modalTitle}>Filtros</Text>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <Text style={homeStyles.filterGroupLabel}>Local / Sala</Text>
-          <View style={homeStyles.filterOptions}>
-            {['', ...availableLocals].map((val) => (
-              <TouchableOpacity
-                key={val || '__all_local'}
-                style={[
-                  homeStyles.filterOption,
-                  filters.local === val && homeStyles.filterOptionActive,
-                ]}
-                onPress={() => onChange({ ...filters, local: val })}
-                accessibilityRole="button"
-                accessibilityLabel={val || 'Todos os locais'}
-              >
-                <Text
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text style={homeStyles.filterGroupLabel}>Local / Sala</Text>
+            <View style={homeStyles.filterOptions}>
+              {['', ...availableLocals].map((val) => (
+                <TouchableOpacity
+                  key={val || '__all_local'}
                   style={[
-                    homeStyles.filterOptionText,
-                    filters.local === val && homeStyles.filterOptionTextActive,
+                    homeStyles.filterOption,
+                    filters.local === val && homeStyles.filterOptionActive,
                   ]}
+                  onPress={() => onChange({ ...filters, local: val })}
+                  accessibilityRole="button"
+                  accessibilityLabel={val || 'Todos os locais'}
                 >
-                  {val || 'Todos'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
+                  <Text
+                    style={[
+                      homeStyles.filterOptionText,
+                      filters.local === val && homeStyles.filterOptionTextActive,
+                    ]}
+                  >
+                    {val || 'Todos'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
 
-        <View style={homeStyles.modalActions}>
-          <TouchableOpacity style={homeStyles.btnClear} onPress={onClear}>
-            <Text style={homeStyles.btnClearText}>Limpar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={homeStyles.btnApply} onPress={onApply}>
-            <Text style={homeStyles.btnApplyText}>Aplicar filtros</Text>
-          </TouchableOpacity>
+          <View style={homeStyles.modalActions}>
+            <TouchableOpacity style={homeStyles.btnClear} onPress={onClear}>
+              <Text style={homeStyles.btnClearText}>Limpar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={homeStyles.btnApply} onPress={onApply}>
+              <Text style={homeStyles.btnApplyText}>Aplicar filtros</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </Modal>
-  )
+      </Modal>
+    );
+  }
 );

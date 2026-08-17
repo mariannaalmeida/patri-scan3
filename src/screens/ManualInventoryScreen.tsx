@@ -1,5 +1,4 @@
 /**
- *
  * Tela para cadastro manual de inventário, item por item.
  * Útil para pequenos inventários ou quando não há arquivo CSV.
  * Suporte completo a campos dinâmicos (EAV / Dynamic Schema)
@@ -20,9 +19,8 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Toast from 'react-native-toast-message';
-
+import { useTheme } from '../contexts/ThemeContext';
 import { StorageService } from '../services/StorageService';
-import { colors, localStyles, manualInventoryStyles } from '../styles/theme';
 import { AssetItem, Inventory, RootStackParamList, UnexpectedItem } from '../types/types';
 import { formatBrazilianCurrencyInput, parseBrazilianCurrencySafe } from '../utils/currencyUtils';
 import { toISODate } from '../utils/dateUtils';
@@ -75,13 +73,11 @@ const createEmptyItem = (): ManualItem => ({
 export const ManualInventoryScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ManualInventoryRouteProp>();
-  const styles = manualInventoryStyles;
+  const { colors, mode, manualInventoryStyles, localStyles } = useTheme();
 
   // Parâmetros para identificar se estamos adicionando itens não listados a um inventário existente
   const existingInventoryId = route.params?.inventoryId;
   const existingInventoryName = route.params?.inventoryName;
-
-  // Capturamos o código enviado pelo Scanner (fazemos um cast 'as any' caso seu RootStackParamList não tenha essa propriedade tipada ainda)
 
   const isUnexpectedMode = !!existingInventoryId;
   const prefilledCode = route.params?.prefilledCode || '';
@@ -94,7 +90,7 @@ export const ManualInventoryScreen = () => {
   const [items, setItems] = useState<ManualItem[]>([
     {
       id: Date.now().toString() + Math.random().toString(36).slice(2),
-      code: prefilledCode, // <--- Aqui está a mágica!
+      code: prefilledCode,
       description: '',
       location: '',
       value: '',
@@ -145,6 +141,7 @@ export const ManualInventoryScreen = () => {
       navigation.navigate('Home');
     }
   };
+
   // Gerenciamento do Schema
 
   const addSchemaField = () => {
@@ -200,18 +197,19 @@ export const ManualInventoryScreen = () => {
         text1: 'Atenção',
         text2: 'O inventário precisa ter ao menos um item.',
       });
-      return; // interrompe antes de remover
+      return;
     }
     setItems((prev) => prev.filter((item) => item.id !== id));
   };
+
   const duplicateItem = (id: string) => {
     const original = items.find((item) => item.id === id);
     if (!original) return;
 
     const newItem: ManualItem = {
       ...original,
-      id: Date.now().toString() + Math.random().toString(36).slice(2), // novo ID único
-      customFields: { ...original.customFields }, // clone raso é suficiente
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      customFields: { ...original.customFields },
     };
 
     setItems((prev) => [...prev, newItem]);
@@ -242,8 +240,6 @@ export const ManualInventoryScreen = () => {
     );
   };
 
-
-
   // Salvar
   const handleSave = async () => {
     if (!isUnexpectedMode && !inventoryName.trim()) {
@@ -261,7 +257,6 @@ export const ManualInventoryScreen = () => {
       return;
     }
 
-    // 1. Verifica duplicados DENTRO do formulário atual
     const formCodes = items.map((item) => item.code.trim().toUpperCase());
     const uniqueFormCodes = new Set(formCodes);
     if (uniqueFormCodes.size !== formCodes.length) {
@@ -278,7 +273,7 @@ export const ManualInventoryScreen = () => {
       const now = toISODate(new Date());
       const assetItems: AssetItem[] = items.map((item) => {
         const base = {
-          code: item.code.trim().toUpperCase(), // Força maiúsculas
+          code: item.code.trim().toUpperCase(),
           description: item.description.trim() || undefined,
           location: item.location.trim() || inventoryLocation.trim() || undefined,
           value: parseBrazilianCurrencySafe(item.value),
@@ -293,7 +288,6 @@ export const ManualInventoryScreen = () => {
       });
 
       if (isUnexpectedMode && existingInventoryId) {
-        // FLUXO B: Adicionar itens não listados a um inventário existente
         const loadResult = await StorageService.loadInventory(existingInventoryId);
 
         if (!loadResult.ok) {
@@ -302,7 +296,6 @@ export const ManualInventoryScreen = () => {
 
         const inventory = loadResult.value;
 
-        // 2. NOVO: Verifica colisões contra itens JÁ EXISTENTES na base de dados
         const existingRegularCodes = new Set(inventory.items.map((i) => i.code.toUpperCase()));
         const existingUnexpectedCodes = new Set(
           (inventory.unexpectedItems || []).map((i) => i.code.toUpperCase())
@@ -316,7 +309,7 @@ export const ManualInventoryScreen = () => {
               text2: `O código ${code} pertence à lista original do inventário. Escaneie-o normalmente.`,
             });
             setIsLoading(false);
-            return; // Interrompe a execução
+            return;
           }
           if (existingUnexpectedCodes.has(code)) {
             Toast.show({
@@ -325,15 +318,14 @@ export const ManualInventoryScreen = () => {
               text2: `A sobra física ${code} já foi registada anteriormente.`,
             });
             setIsLoading(false);
-            return; // Interrompe a execução
+            return;
           }
         }
 
         inventory.metadata.lastModified = now;
 
-        // Mapeia para UnexpectedItem[]
         const unexpectedItemsToAdd: UnexpectedItem[] = items.map((item) => ({
-          code: item.code.trim().toUpperCase(), // Força maiúsculas aqui também
+          code: item.code.trim().toUpperCase(),
           scannedAt: now,
           description: item.description.trim() || undefined,
           location: item.location.trim() || inventoryLocation.trim() || undefined,
@@ -342,7 +334,6 @@ export const ManualInventoryScreen = () => {
 
         inventory.unexpectedItems = [...(inventory.unexpectedItems || []), ...unexpectedItemsToAdd];
 
-        // Atualiza o schema caso novos campos tenham sido criados
         const newSchemaFields = schemaFields.filter(
           (f) => !inventory.schema.fields.some((existing) => existing.name === f.name)
         );
@@ -371,7 +362,7 @@ export const ManualInventoryScreen = () => {
                 type: 'primary',
                 onPress: () => {
                   closeDialog();
-                  navigation.goBack(); // Volta para o ecrã anterior
+                  navigation.goBack();
                 },
               },
             ],
@@ -380,7 +371,6 @@ export const ManualInventoryScreen = () => {
           throw new Error(saveResult.error?.message ?? 'Erro desconhecido ao atualizar inventário');
         }
       } else {
-        // FLUXO A: Criar um inventário do zero
         const id = StorageService.generateInventoryId();
         const schema = generateBasicSchema(
           assetItems,
@@ -446,58 +436,59 @@ export const ManualInventoryScreen = () => {
     }
   };
 
-  //  Render
+  const barStyle = mode === 'dark' ? 'light-content' : 'dark-content';
 
+  //  Render
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+    <View style={manualInventoryStyles.container}>
+      <StatusBar barStyle={barStyle} backgroundColor={colors.bg} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
+      <View style={manualInventoryStyles.header}>
+        <TouchableOpacity onPress={handleGoBack} style={manualInventoryStyles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
+        <Text style={manualInventoryStyles.headerTitle}>
           {isUnexpectedMode ? 'Adicionar Não Listados' : 'Cadastro Manual'}
         </Text>
-        <TouchableOpacity onPress={handleGoToHome} style={styles.homeBtn}>
+        <TouchableOpacity onPress={handleGoToHome} style={manualInventoryStyles.homeBtn}>
           <Ionicons name="home-outline" size={22} color={colors.accent} />
         </TouchableOpacity>
       </View>
 
       <KeyboardAwareScrollView
-        style={styles.content}
+        style={manualInventoryStyles.content}
         showsVerticalScrollIndicator={false}
-        enableOnAndroid={true} // Ativa a mágica no Android também
-        extraScrollHeight={20} // Um espacinho extra acima do teclado
+        enableOnAndroid={true}
+        extraScrollHeight={20}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         {/* Renderiza as opções de configuração do inventário APENAS se for uma criação nova */}
         {!isUnexpectedMode && (
           /* Nome do Inventário */
-          <View style={styles.section}>
-            <Text style={styles.label}>Nome do Inventário </Text>
+          <View style={manualInventoryStyles.section}>
+            <Text style={manualInventoryStyles.label}>Nome do Inventário</Text>
             <TextInput
-              style={styles.input}
+              style={manualInventoryStyles.input}
               value={inventoryName}
               onChangeText={setInventoryName}
               placeholder="Ex: Patrimônio 2026"
               placeholderTextColor={colors.textDim}
-              accessibilityLabel="Nome do Inventário "
+              accessibilityLabel="Nome do Inventário"
             />
-            <Text style={styles.label}>Localização do Inventário (opcional)</Text>
+            <Text style={manualInventoryStyles.label}>Localização do Inventário (opcional)</Text>
             <TextInput
-              style={styles.input}
+              style={manualInventoryStyles.input}
               value={inventoryLocation}
               onChangeText={setInventoryLocation}
               placeholder="Ex: Sala 101, Prédio A"
               placeholderTextColor={colors.textDim}
               accessibilityLabel="Localização do Inventário"
             />
-            <Text style={styles.label}>Ano de Referência (opcioanal)</Text>
+            <Text style={manualInventoryStyles.label}>Ano de Referência (opcional)</Text>
             <TextInput
-              style={styles.input}
+              style={manualInventoryStyles.input}
               value={inventoryYear}
               onChangeText={setInventoryYear}
               placeholder="Ex: 2026"
@@ -510,7 +501,7 @@ export const ManualInventoryScreen = () => {
         )}
 
         {isUnexpectedMode && (
-          <View style={styles.section}>
+          <View style={manualInventoryStyles.section}>
             <Text style={{ color: colors.textDim, marginBottom: 12 }}>
               Adicionando itens não previstos ao inventário:{' '}
               <Text style={{ fontWeight: 'bold', color: colors.text }}>
@@ -521,8 +512,8 @@ export const ManualInventoryScreen = () => {
         )}
 
         {/*  Campos Extras */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Adicionar Campos Extras (Opcional)</Text>
+        <View style={manualInventoryStyles.section}>
+          <Text style={manualInventoryStyles.label}>Adicionar Campos Extras (Opcional)</Text>
           <Text style={localStyles.hint}>
             Adicione campos específicos do seu contexto: Marca, Modelo, Cor…
           </Text>
@@ -541,7 +532,7 @@ export const ManualInventoryScreen = () => {
 
           <View style={localStyles.addFieldRow}>
             <TextInput
-              style={[styles.input, localStyles.addFieldInput]}
+              style={[manualInventoryStyles.input, localStyles.addFieldInput]}
               value={newFieldName}
               onChangeText={setNewFieldName}
               placeholder="Nome do campo"
@@ -556,43 +547,48 @@ export const ManualInventoryScreen = () => {
           </View>
         </View>
 
-        {/*  Itens Patrimoniais  */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.label}>Itens Patrimoniais *</Text>
-            <TouchableOpacity style={styles.addButton} onPress={addItem}>
-              <Text style={styles.addButtonText}>+ Adicionar Item</Text>
+        {/*  Itens Patrimoniais */}
+        <View style={manualInventoryStyles.section}>
+          <View style={manualInventoryStyles.sectionHeader}>
+            <Text style={manualInventoryStyles.label}>Itens Patrimoniais</Text>
+            <TouchableOpacity style={manualInventoryStyles.addButton} onPress={addItem}>
+              <Text style={manualInventoryStyles.addButtonText}>+ Adicionar Item</Text>
             </TouchableOpacity>
           </View>
 
           {items.map((item, index) => (
-            <View key={item.id} style={styles.itemCard}>
-              <View style={styles.itemHeader}>
-                <Text style={styles.itemTitle}>Item {index + 1}</Text>
+            <View key={item.id} style={manualInventoryStyles.itemCard}>
+              <View style={manualInventoryStyles.itemHeader}>
+                <Text style={manualInventoryStyles.itemTitle}>Item {index + 1}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   {/* Botão Duplicar */}
                   <TouchableOpacity
                     onPress={() => duplicateItem(item.id)}
-                    style={styles.duplicateButton}
+                    style={manualInventoryStyles.duplicateButton}
                   >
                     <Ionicons name="copy-outline" size={18} color={colors.accent} />
-                    <Text style={[styles.removeButtonText, { color: colors.accent }]}>
+                    <Text
+                      style={[manualInventoryStyles.removeButtonText, { color: colors.accent }]}
+                    >
                       {' '}
                       Duplicar
                     </Text>
                   </TouchableOpacity>
                   {/* Botão Remover  */}
-                  <TouchableOpacity onPress={() => removeItem(item.id)} style={styles.removeButton}>
+                  <TouchableOpacity
+                    onPress={() => removeItem(item.id)}
+                    style={manualInventoryStyles.removeButton}
+                  >
                     <Ionicons name="trash-outline" size={18} color={colors.accentErr} />
-                    <Text style={styles.removeButtonText}> Remover</Text>
+                    <Text style={manualInventoryStyles.removeButtonText}> Remover</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
               {/* Campos fixos */}
-              <Text style={styles.fieldLabel}>Código *</Text>
+              <Text style={manualInventoryStyles.fieldLabel}>Código</Text>
               <TextInput
-                style={styles.input}
+                style={manualInventoryStyles.input}
                 value={item.code}
                 onChangeText={(v) => updateItem(item.id, 'code', v.toUpperCase())}
                 placeholder="Ex: PAT-001"
@@ -601,9 +597,9 @@ export const ManualInventoryScreen = () => {
                 autoCapitalize="characters"
               />
 
-              <Text style={styles.fieldLabel}>Descrição</Text>
+              <Text style={manualInventoryStyles.fieldLabel}>Descrição (opcional)</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[manualInventoryStyles.input, manualInventoryStyles.textArea]}
                 value={item.description}
                 onChangeText={(v) => updateItem(item.id, 'description', v)}
                 placeholder="Descrição do item"
@@ -613,11 +609,11 @@ export const ManualInventoryScreen = () => {
                 accessibilityLabel="Descrição"
               />
 
-              <View style={styles.row}>
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>Localização</Text>
+              <View style={manualInventoryStyles.row}>
+                <View style={manualInventoryStyles.halfField}>
+                  <Text style={manualInventoryStyles.fieldLabel}>Localização (opcional)</Text>
                   <TextInput
-                    style={styles.input}
+                    style={manualInventoryStyles.input}
                     value={item.location}
                     onChangeText={(v) => updateItem(item.id, 'location', v)}
                     placeholder="Ex: Sala 101"
@@ -627,21 +623,20 @@ export const ManualInventoryScreen = () => {
                 </View>
               </View>
 
-              <View style={styles.row}>
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>Valor (R$)</Text>
+              <View style={manualInventoryStyles.row}>
+                <View style={manualInventoryStyles.halfField}>
+                  <Text style={manualInventoryStyles.fieldLabel}>Valor (R$) (opcional)</Text>
                   <TextInput
-                    style={styles.input}
+                    style={manualInventoryStyles.input}
                     value={item.value}
                     onChangeText={(v) => {
-                      // Aplica a máscara e salva a string formatada no estado
                       const maskedValue = formatBrazilianCurrencyInput(v);
                       updateItem(item.id, 'value', maskedValue);
                     }}
                     placeholder="Ex: 1.500,00"
                     placeholderTextColor={colors.textDim}
                     accessibilityLabel="Valor"
-                    keyboardType="numeric" // 'numeric' para forçar apenas números no teclado
+                    keyboardType="numeric"
                   />
                 </View>
               </View>
@@ -651,9 +646,9 @@ export const ManualInventoryScreen = () => {
                   <Text style={localStyles.customFieldsSectionTitle}>Campos Extras</Text>
                   {schemaFields.map((sf) => (
                     <View key={sf.id}>
-                      <Text style={styles.fieldLabel}>{sf.name}</Text>
+                      <Text style={manualInventoryStyles.fieldLabel}>{sf.name}</Text>
                       <TextInput
-                        style={styles.input}
+                        style={manualInventoryStyles.input}
                         value={item.customFields[sf.name] ?? ''}
                         onChangeText={(v) => updateCustomField(item.id, sf.name, v)}
                         placeholder={`Digite ${sf.name.toLowerCase()}…`}
@@ -669,14 +664,17 @@ export const ManualInventoryScreen = () => {
         </View>
 
         <TouchableOpacity
-          style={[styles.saveButton, isLoading && styles.buttonDisabled]}
+          style={[
+            manualInventoryStyles.saveButton,
+            isLoading && manualInventoryStyles.buttonDisabled,
+          ]}
           onPress={handleSave}
           disabled={isLoading}
         >
           {isLoading ? (
-            <ActivityIndicator color="#000" />
+            <ActivityIndicator color={colors.accent} />
           ) : (
-            <Text style={styles.saveButtonText}>
+            <Text style={manualInventoryStyles.saveButtonText}>
               {isUnexpectedMode ? 'Salvar Itens Não Listados' : 'Salvar Inventário'}
             </Text>
           )}
@@ -691,9 +689,9 @@ export const ManualInventoryScreen = () => {
   );
 };
 
-//  Sub-componente: Custom Dialog 
-
+//  Sub-componente: Custom Dialog
 const CustomDialog = ({ config }: { config: DialogConfig }) => {
+  const { colors } = useTheme();
   if (!config.visible) return null;
 
   return (
@@ -726,38 +724,40 @@ const CustomDialog = ({ config }: { config: DialogConfig }) => {
           </Text>
 
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
-            {config.buttons.map((btn, idx) => (
-              <TouchableOpacity
-                key={idx}
-                onPress={btn.onPress}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 8,
-                  backgroundColor:
-                    btn.type === 'primary'
-                      ? colors.accent
-                      : btn.type === 'danger'
-                        ? colors.error + '20'
-                        : 'transparent',
-                }}
-              >
-                <Text
+            {config.buttons.map((btn, idx) => {
+              let bgColor = 'transparent';
+              let textColor = colors.textDim;
+
+              if (btn.type === 'primary') {
+                bgColor = colors.accent;
+                textColor = '#000';
+              } else if (btn.type === 'danger') {
+                bgColor = colors.error + '20';
+                textColor = colors.error;
+              } else {
+                bgColor = 'transparent';
+                textColor = colors.textDim;
+              }
+
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={btn.onPress}
                   style={{
-                    fontSize: 15,
-                    fontWeight: '600',
-                    color:
-                      btn.type === 'primary'
-                        ? '#000'
-                        : btn.type === 'danger'
-                          ? colors.error
-                          : colors.textDim,
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 8,
+                    backgroundColor: bgColor,
+                    borderWidth: btn.type === 'cancel' ? 1 : 0,
+                    borderColor: btn.type === 'cancel' ? colors.border : 'transparent',
                   }}
                 >
-                  {btn.text}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: textColor }}>
+                    {btn.text}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </View>

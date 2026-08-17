@@ -10,8 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import { StorageService } from '../services/StorageService';
-import { colors, commonStyles, itemDetailStyles } from '../styles/theme';
 import { AssetItem, RootStackParamList, isScannedItem } from '../types/types';
 import { formatBrazilianCurrency } from '../utils/currencyUtils';
 import { formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
@@ -28,6 +28,8 @@ export const ItemDetailScreen = () => {
   const [inventoryName, setInventoryName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
+  const { colors, mode, commonStyles, itemDetailStyles } = useTheme();
+
   useEffect(() => {
     const loadItem = async () => {
       try {
@@ -39,10 +41,8 @@ export const ItemDetailScreen = () => {
           const isUnexpected = route.params?.isUnexpected;
 
           if (isUnexpected) {
-            // Busca em unexpectedItems
             const found = inventory.unexpectedItems?.find((i) => i.code === itemCode);
             if (found) {
-              // Converte para AssetItem compatível com a UI
               setItem({
                 code: found.code,
                 description: found.description || '',
@@ -55,7 +55,6 @@ export const ItemDetailScreen = () => {
               setItem(null);
             }
           } else {
-            // Busca em items (comportamento original)
             const found = inventory.items.find((i) => i.code === itemCode);
             setItem(found || null);
           }
@@ -74,7 +73,10 @@ export const ItemDetailScreen = () => {
   if (isLoading) {
     return (
       <View style={commonStyles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+        <StatusBar
+          barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={colors.bg}
+        />
         <ActivityIndicator color={colors.accent} size="large" />
         <Text style={commonStyles.loadingText}>Carregando item…</Text>
       </View>
@@ -84,7 +86,10 @@ export const ItemDetailScreen = () => {
   if (!item) {
     return (
       <View style={commonStyles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+        <StatusBar
+          barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={colors.bg}
+        />
         <Ionicons name="alert-circle-outline" size={48} color={colors.accentErr} />
         <Text style={commonStyles.errorText}>Item não encontrado.</Text>
         <TouchableOpacity onPress={handleGoBack} style={commonStyles.errorButton}>
@@ -99,7 +104,10 @@ export const ItemDetailScreen = () => {
 
   return (
     <View style={commonStyles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar
+        barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.bg}
+      />
 
       {/* Header */}
       <View style={itemDetailStyles.header}>
@@ -202,24 +210,31 @@ export const ItemDetailScreen = () => {
   );
 };
 
-// Sub-componente para campos de detalhe
-interface DetailFieldProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value?: string | null;
-}
+// Sub-componente agora usa o próprio useTheme()
+const DetailField = React.memo(
+  ({
+    icon,
+    label,
+    value,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    value?: string | null;
+  }) => {
+    const { colors, itemDetailStyles } = useTheme();
 
-const DetailField = React.memo(({ icon, label, value }: DetailFieldProps) => {
-  if (!value) return null;
-  return (
-    <View style={itemDetailStyles.fieldRow}>
-      <View style={itemDetailStyles.fieldIcon}>
-        <Ionicons name={icon} size={18} color={colors.accent} />
+    if (value === null || value === undefined) return null; // permite exibir zero
+
+    return (
+      <View style={itemDetailStyles.fieldRow}>
+        <View style={itemDetailStyles.fieldIcon}>
+          <Ionicons name={icon} size={18} color={colors.accent} />
+        </View>
+        <View style={itemDetailStyles.fieldContent}>
+          <Text style={itemDetailStyles.fieldLabel}>{label}</Text>
+          <Text style={itemDetailStyles.fieldValue}>{value}</Text>
+        </View>
       </View>
-      <View style={itemDetailStyles.fieldContent}>
-        <Text style={itemDetailStyles.fieldLabel}>{label}</Text>
-        <Text style={itemDetailStyles.fieldValue}>{value}</Text>
-      </View>
-    </View>
-  );
-});
+    );
+  }
+);

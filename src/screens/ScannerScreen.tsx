@@ -18,9 +18,9 @@ import {
   Vibration,
   View,
 } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import { ScannerService } from '../services/ScannerService';
 import { StorageService } from '../services/StorageService';
-import { colors, commonStyles, scannerStyles } from '../styles/theme';
 import { AssetItem, Inventory, RootStackParamList } from '../types/types';
 
 type ScannerRouteProp = RouteProp<RootStackParamList, 'Scanner'>;
@@ -41,11 +41,12 @@ export const ScannerScreen = () => {
   const route = useRoute<ScannerRouteProp>();
   const { inventoryId } = route.params ?? {};
   const isFocused = useIsFocused();
+  const { colors, mode, commonStyles, scannerStyles } = useTheme();
 
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [mode, setMode] = useState<ScanMode>('camera');
+  const [modeScan, setModeScan] = useState<ScanMode>('camera');
   const [permission, requestPermission] = useCameraPermissions();
   const [manualCode, setManualCode] = useState('');
   const manualInputRef = useRef<TextInput>(null);
@@ -66,7 +67,6 @@ export const ScannerScreen = () => {
 
   const confirmingRef = useRef(false);
 
-  // Quando a tela ganha foco, reseta bloqueios e recarrega inventário
   useEffect(() => {
     if (isFocused) {
       scanCooldown.current = false;
@@ -75,7 +75,6 @@ export const ScannerScreen = () => {
         clearTimeout(scanCooldownTimeout.current);
         scanCooldownTimeout.current = null;
       }
-      // Recarrega inventário para refletir itens não listados adicionados
       if (inventoryId) {
         StorageService.loadInventory(inventoryId).then((result) => {
           if (result.ok) setInventory(result.value);
@@ -84,7 +83,6 @@ export const ScannerScreen = () => {
     }
   }, [isFocused, inventoryId]);
 
-  // Limpeza de timeouts ao desmontar
   useEffect(() => {
     const currentAlertTimeouts = alertTimeouts.current;
     const currentScanCooldownTimeout = scanCooldownTimeout.current;
@@ -97,7 +95,6 @@ export const ScannerScreen = () => {
     };
   }, []);
 
-  // Carregar inventário inicial
   useEffect(() => {
     const loadInventory = async () => {
       if (!inventoryId) {
@@ -135,10 +132,10 @@ export const ScannerScreen = () => {
     : { scanned: 0, total: 0, percentage: 0, remaining: 0 };
 
   useEffect(() => {
-    if (mode === 'camera' && permission && !permission.granted) {
+    if (modeScan === 'camera' && permission && !permission.granted) {
       requestPermission();
     }
-  }, [mode, permission, requestPermission]);
+  }, [modeScan, permission, requestPermission]);
 
   const showAlert = useCallback((type: AlertBanner['type'], message: string) => {
     const id = ++alertCounter.current;
@@ -303,18 +300,17 @@ export const ScannerScreen = () => {
     manualInputRef.current?.focus();
   }, [manualCode, handleCodeScanned]);
 
-  const handleGoBack = () => {
-    navigation.goBack();
-  };
+  const handleGoBack = () => navigation.goBack();
 
-  const handleGoToHome = () => {
-    navigation.navigate('Home');
-  };
+  const handleGoToHome = () => navigation.navigate('Home');
 
   if (loading) {
     return (
       <View style={commonStyles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+        <StatusBar
+          barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={colors.bg}
+        />
         <ActivityIndicator size="large" color={colors.accent} />
         <Text style={commonStyles.loadingText}>Carregando inventário...</Text>
       </View>
@@ -324,7 +320,10 @@ export const ScannerScreen = () => {
   if (!inventory) {
     return (
       <View style={commonStyles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+        <StatusBar
+          barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={colors.bg}
+        />
         <Ionicons name="alert-circle-outline" size={48} color={colors.accentErr} />
         <Text style={commonStyles.errorText}>Inventário não encontrado.</Text>
         <TouchableOpacity onPress={handleGoBack} style={commonStyles.errorButton}>
@@ -336,7 +335,10 @@ export const ScannerScreen = () => {
 
   return (
     <View style={commonStyles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar
+        barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.bg}
+      />
 
       {/* Header */}
       <View style={scannerStyles.header}>
@@ -401,44 +403,50 @@ export const ScannerScreen = () => {
       {/* Tabs */}
       <View style={scannerStyles.tabs}>
         <TouchableOpacity
-          style={[scannerStyles.tab, mode === 'camera' && scannerStyles.tabActive]}
-          onPress={() => setMode('camera')}
+          style={[scannerStyles.tab, modeScan === 'camera' && scannerStyles.tabActive]}
+          onPress={() => setModeScan('camera')}
         >
           <Ionicons
             name="camera-outline"
             size={18}
-            color={mode === 'camera' ? colors.accent : colors.textDim}
+            color={modeScan === 'camera' ? colors.accent : colors.textDim}
           />
-          <Text style={[scannerStyles.tabText, mode === 'camera' && scannerStyles.tabTextActive]}>
+          <Text
+            style={[scannerStyles.tabText, modeScan === 'camera' && scannerStyles.tabTextActive]}
+          >
             Câmera
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[scannerStyles.tab, mode === 'manual' && scannerStyles.tabActive]}
+          style={[scannerStyles.tab, modeScan === 'manual' && scannerStyles.tabActive]}
           onPress={() => {
-            setMode('manual');
+            setModeScan('manual');
             setTimeout(() => manualInputRef.current?.focus(), 200);
           }}
         >
           <Ionicons
             name="keypad-outline"
             size={18}
-            color={mode === 'manual' ? colors.accent : colors.textDim}
+            color={modeScan === 'manual' ? colors.accent : colors.textDim}
           />
-          <Text style={[scannerStyles.tabText, mode === 'manual' && scannerStyles.tabTextActive]}>
+          <Text
+            style={[scannerStyles.tabText, modeScan === 'manual' && scannerStyles.tabTextActive]}
+          >
             Manual
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Área Principal - Renderiza câmera apenas se focado */}
+      {/* Área Principal */}
       <View style={scannerStyles.mainArea}>
-        {mode === 'camera' ? (
+        {modeScan === 'camera' ? (
           isFocused ? (
             <CameraArea
               permission={permission}
               onRequestPermission={requestPermission}
               onCodeScanned={handleCodeScanned}
+              colors={colors}
+              scannerStyles={scannerStyles}
             />
           ) : (
             <View style={scannerStyles.cameraPlaceholder}>
@@ -452,6 +460,8 @@ export const ScannerScreen = () => {
             onChange={setManualCode}
             onSubmit={handleManualSubmit}
             inputRef={manualInputRef}
+            colors={colors}
+            scannerStyles={scannerStyles}
           />
         )}
       </View>
@@ -514,21 +524,24 @@ export const ScannerScreen = () => {
         item={pendingItem}
         onConfirm={handleConfirm}
         onCancel={handleCancelConfirm}
+        colors={colors}
+        scannerStyles={scannerStyles}
       />
     </View>
   );
 };
 
-// ─── Subcomponentes ──────────────────────────────────────────────────────────
-
+// Subcomponentes
 interface CameraAreaProps {
   permission: { granted: boolean } | null;
   onRequestPermission: () => void;
   onCodeScanned: (code: string) => void;
+  colors: any;
+  scannerStyles: any;
 }
 
 const CameraArea = React.memo(
-  ({ permission, onRequestPermission, onCodeScanned }: CameraAreaProps) => {
+  ({ permission, onRequestPermission, onCodeScanned, colors, scannerStyles }: CameraAreaProps) => {
     if (!permission) {
       return (
         <View style={scannerStyles.cameraPlaceholder}>
@@ -587,102 +600,138 @@ interface ManualAreaProps {
   onChange: (v: string) => void;
   onSubmit: () => void;
   inputRef: React.RefObject<TextInput | null>;
+  colors: any;
+  scannerStyles: any;
 }
 
-const ManualArea = React.memo(({ value, onChange, onSubmit, inputRef }: ManualAreaProps) => (
-  <KeyboardAvoidingView
-    style={scannerStyles.manualArea}
-    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-  >
-    <Ionicons name="finger-print-outline" size={48} color={colors.textDim} />
-    <Text style={scannerStyles.manualTitle}>Código do patrimônio</Text>
-    <Text style={scannerStyles.manualDesc}>
-      Digite o código exatamente como consta no inventário
-    </Text>
-    <TextInput
-      ref={inputRef}
-      style={scannerStyles.manualInput}
-      value={value}
-      onChangeText={onChange}
-      placeholder="Ex: PAT-00123"
-      placeholderTextColor="#555"
-      autoCapitalize="characters"
-      autoCorrect={false}
-      returnKeyType="search"
-      onSubmitEditing={onSubmit}
-    />
-    <TouchableOpacity
-      style={[scannerStyles.manualSubmitBtn, !value.trim() && scannerStyles.manualSubmitDisabled]}
-      onPress={onSubmit}
-      disabled={!value.trim()}
+const ManualArea = React.memo(
+  ({ value, onChange, onSubmit, inputRef, colors, scannerStyles }: ManualAreaProps) => (
+    <KeyboardAvoidingView
+      style={scannerStyles.manualArea}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Text style={scannerStyles.manualSubmitText}>Buscar item</Text>
-      <Ionicons name="arrow-forward" size={20} color="#000" style={{ marginLeft: 4 }} />
-    </TouchableOpacity>
-  </KeyboardAvoidingView>
-));
+      <Ionicons name="finger-print-outline" size={48} color={colors.textDim} />
+      <Text style={scannerStyles.manualTitle}>Código do patrimônio</Text>
+      <Text style={scannerStyles.manualDesc}>
+        Digite o código exatamente como consta no inventário
+      </Text>
+      <TextInput
+        ref={inputRef}
+        style={scannerStyles.manualInput}
+        value={value}
+        onChangeText={onChange}
+        placeholder="Ex: PAT-00123"
+        placeholderTextColor="#555"
+        autoCapitalize="characters"
+        autoCorrect={false}
+        returnKeyType="search"
+        onSubmitEditing={onSubmit}
+      />
+      <TouchableOpacity
+        style={[scannerStyles.manualSubmitBtn, !value.trim() && scannerStyles.manualSubmitDisabled]}
+        onPress={onSubmit}
+        disabled={!value.trim()}
+      >
+        <Text style={scannerStyles.manualSubmitText}>Buscar item</Text>
+        <Ionicons name="arrow-forward" size={20} color="#000" style={{ marginLeft: 4 }} />
+      </TouchableOpacity>
+    </KeyboardAvoidingView>
+  )
+);
 
 interface ConfirmModalProps {
   visible: boolean;
   item: AssetItem | null;
   onConfirm: () => void;
   onCancel: () => void;
+  colors: any;
+  scannerStyles: any;
 }
 
-const ConfirmModal = React.memo(({ visible, item, onConfirm, onCancel }: ConfirmModalProps) => {
-  const customFieldsEntries = item?.customFields ? Object.entries(item.customFields) : [];
+const ConfirmModal = React.memo(
+  ({ visible, item, onConfirm, onCancel, colors, scannerStyles }: ConfirmModalProps) => {
+    const customFieldsEntries = item?.customFields ? Object.entries(item.customFields) : [];
 
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <View style={scannerStyles.modalOverlay}>
-        <View style={scannerStyles.modalSheet}>
-          <View style={scannerStyles.modalHandle} />
-          <Text style={scannerStyles.modalTitle}>Confirmar item</Text>
-          <Text style={scannerStyles.modalSubtitle}>
-            Verifique os dados antes de confirmar o scan
-          </Text>
-          {item && (
-            <ScrollView
-              style={scannerStyles.modalDetails}
-              contentContainerStyle={scannerStyles.modalDetailsContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <DetailRow icon="pricetag-outline" label="Código" value={item.code} highlight />
-              {item.description ? (
-                <DetailRow icon="cube-outline" label="Descrição" value={item.description} />
-              ) : null}
-              {item.location ? (
-                <DetailRow icon="location-outline" label="Localização" value={item.location} />
-              ) : null}
-              {item.value ? (
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
+        <View style={scannerStyles.modalOverlay}>
+          <View style={scannerStyles.modalSheet}>
+            <View style={scannerStyles.modalHandle} />
+            <Text style={scannerStyles.modalTitle}>Confirmar item</Text>
+            <Text style={scannerStyles.modalSubtitle}>
+              Verifique os dados antes de confirmar o scan
+            </Text>
+            {item && (
+              <ScrollView
+                style={scannerStyles.modalDetails}
+                contentContainerStyle={scannerStyles.modalDetailsContent}
+                showsVerticalScrollIndicator={false}
+              >
                 <DetailRow
-                  icon="cash-outline"
-                  label="Valor"
-                  value={new Intl.NumberFormat('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL',
-                  }).format(item.value)}
+                  icon="pricetag-outline"
+                  label="Código"
+                  value={item.code}
+                  highlight
+                  colors={colors}
+                  scannerStyles={scannerStyles}
                 />
-              ) : null}
-              {customFieldsEntries.map(([key, val]) => (
-                <DetailRow key={key} icon="star-outline" label={key} value={val} />
-              ))}
-            </ScrollView>
-          )}
-          <View style={scannerStyles.modalActions}>
-            <TouchableOpacity style={scannerStyles.cancelBtn} onPress={onCancel}>
-              <Text style={scannerStyles.cancelBtnText}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={scannerStyles.confirmBtn} onPress={onConfirm}>
-              <Ionicons name="checkmark-circle" size={20} color="#000" />
-              <Text style={scannerStyles.confirmBtnText}>Confirmar</Text>
-            </TouchableOpacity>
+                {item.description ? (
+                  <DetailRow
+                    icon="cube-outline"
+                    label="Descrição"
+                    value={item.description}
+                    colors={colors}
+                    scannerStyles={scannerStyles}
+                  />
+                ) : null}
+                {item.location ? (
+                  <DetailRow
+                    icon="location-outline"
+                    label="Localização"
+                    value={item.location}
+                    colors={colors}
+                    scannerStyles={scannerStyles}
+                  />
+                ) : null}
+                {item.value ? (
+                  <DetailRow
+                    icon="cash-outline"
+                    label="Valor"
+                    value={new Intl.NumberFormat('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    }).format(item.value)}
+                    colors={colors}
+                    scannerStyles={scannerStyles}
+                  />
+                ) : null}
+                {customFieldsEntries.map(([key, val]) => (
+                  <DetailRow
+                    key={key}
+                    icon="star-outline"
+                    label={key}
+                    value={val}
+                    colors={colors}
+                    scannerStyles={scannerStyles}
+                  />
+                ))}
+              </ScrollView>
+            )}
+            <View style={scannerStyles.modalActions}>
+              <TouchableOpacity style={scannerStyles.cancelBtn} onPress={onCancel}>
+                <Text style={scannerStyles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={scannerStyles.confirmBtn} onPress={onConfirm}>
+                <Ionicons name="checkmark-circle" size={20} color="colors.accent" />
+                <Text style={scannerStyles.confirmBtnText}>Confirmar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
-  );
-});
+      </Modal>
+    );
+  }
+);
 
 const DetailRow = React.memo(
   ({
@@ -690,11 +739,15 @@ const DetailRow = React.memo(
     label,
     value,
     highlight,
+    colors,
+    scannerStyles,
   }: {
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
     value: string;
     highlight?: boolean;
+    colors: any;
+    scannerStyles: any;
   }) => (
     <View style={scannerStyles.detailRow}>
       <Ionicons name={icon} size={20} color={highlight ? colors.accent : colors.textDim} />

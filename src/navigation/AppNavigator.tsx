@@ -1,6 +1,7 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
+import { ThemeProvider } from '../contexts/ThemeContext';
 import { colors } from '../styles/theme';
 import { RootStackParamList } from '../types/types';
 
@@ -18,7 +19,7 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export const AppNavigator = () => {
+const Navigator = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator
@@ -45,5 +46,13 @@ export const AppNavigator = () => {
         <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+};
+
+export const AppNavigator = () => {
+  return (
+    <ThemeProvider>
+      <Navigator />
+    </ThemeProvider>
   );
 };

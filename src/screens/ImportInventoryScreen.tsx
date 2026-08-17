@@ -14,8 +14,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import { ImportService } from '../services/ImportService';
-import { colors, createInventoryStyles } from '../styles/theme';
 import { ColumnMapping, MappableField, RootStackParamList } from '../types/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -48,6 +48,8 @@ export const ImportInventoryScreen = () => {
   const [finalMapping, setFinalMapping] = useState<Record<string, MappableField>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  const { colors, mode, createInventoryStyles } = useTheme();
 
   // Pré-visualização da validação
   const validationPreview = useMemo(() => {
@@ -405,7 +407,7 @@ export const ImportInventoryScreen = () => {
           disabled={isLoading}
         >
           {isLoading ? (
-            <ActivityIndicator color="#000" />
+            <ActivityIndicator color="color.text" />
           ) : (
             <Text style={styles.actionButtonText}>Criar Inventário</Text>
           )}
@@ -418,7 +420,10 @@ export const ImportInventoryScreen = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar
+        barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.bg}
+      />
 
       <View style={styles.header}>
         <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
@@ -477,7 +482,7 @@ export const ImportInventoryScreen = () => {
               disabled={isLoading}
             >
               {isLoading ? (
-                <ActivityIndicator color="#000" />
+                <ActivityIndicator color="color.text" />
               ) : (
                 <Text style={styles.actionButtonText}>Selecionar arquivo CSV</Text>
               )}

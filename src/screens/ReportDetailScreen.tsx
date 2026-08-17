@@ -24,22 +24,19 @@ import {
 } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import Toast from 'react-native-toast-message';
+import { useTheme } from '../contexts/ThemeContext';
 import { AnalyticsService, InventoryReport, ScanEvent } from '../services/AnalyticsService';
 import { ChartService } from '../services/ChartService';
 import { CSVExportService } from '../services/CsvExportService';
 import { ReportService } from '../services/ReportService';
 import { StorageService } from '../services/StorageService';
-import { colors, reportDetailStyles } from '../styles/theme';
 import { InventorySchema, RootStackParamList } from '../types/types';
 
 //  Navegação
 type DetailRoute = RouteProp<RootStackParamList, 'ReportDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-//  Estilos
-const styles = reportDetailStyles;
-
-// Tipagem para o  Modal Customizado
+// Tipagem para o Modal Customizado
 interface DialogConfig {
   visible: boolean;
   title: string;
@@ -61,6 +58,8 @@ export const ReportDetailScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const schemaRef = useRef<InventorySchema | undefined>(undefined);
+
+  const { colors, mode, reportDetailStyles } = useTheme();
 
   // Estado para controlar o Modal de Confirmação/Menu
   const [dialogConfig, setDialogConfig] = useState<DialogConfig>({
@@ -245,13 +244,15 @@ export const ReportDetailScreen = () => {
     });
   }, [report, closeDialog]);
 
+  const barStyle = mode === 'dark' ? 'light-content' : 'dark-content';
+
   // Loading
   if (isLoading || !report) {
     return (
-      <View style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <View style={reportDetailStyles.loadingContainer}>
+        <StatusBar barStyle={barStyle} backgroundColor={colors.bg} />
         <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={styles.loadingText}>Gerando relatório…</Text>
+        <Text style={reportDetailStyles.loadingText}>Gerando relatório…</Text>
       </View>
     );
   }
@@ -261,25 +262,25 @@ export const ReportDetailScreen = () => {
   const hasTimeline = report.scanTimeline.length > 0;
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+    <View style={reportDetailStyles.container}>
+      <StatusBar barStyle={barStyle} backgroundColor={colors.bg} />
 
       {/* Header com navegação completa */}
-      <View style={styles.header}>
+      <View style={reportDetailStyles.header}>
         <TouchableOpacity
           onPress={handleGoBack}
-          style={styles.backBtn}
+          style={reportDetailStyles.backBtn}
           accessibilityLabel="Voltar"
           accessibilityRole="button"
         >
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
+        <View style={reportDetailStyles.headerCenter}>
+          <Text style={reportDetailStyles.headerTitle} numberOfLines={1}>
             {report.inventoryName}
           </Text>
-          <Text style={styles.headerSub}>
+          <Text style={reportDetailStyles.headerSub}>
             Relatório · {AnalyticsService.formatDate(report.generatedAt)}
           </Text>
         </View>
@@ -287,7 +288,7 @@ export const ReportDetailScreen = () => {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
             onPress={handleGoToInventoryDetail}
-            style={styles.iconBtn}
+            style={reportDetailStyles.iconBtn}
             accessibilityLabel="Ir para detalhes do inventário"
             accessibilityRole="button"
           >
@@ -295,7 +296,7 @@ export const ReportDetailScreen = () => {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleGoToReports}
-            style={styles.iconBtn}
+            style={reportDetailStyles.iconBtn}
             accessibilityLabel="Ir para relatórios"
             accessibilityRole="button"
           >
@@ -303,7 +304,7 @@ export const ReportDetailScreen = () => {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleGoToHome}
-            style={styles.iconBtn}
+            style={reportDetailStyles.iconBtn}
             accessibilityLabel="Ir para início"
             accessibilityRole="button"
           >
@@ -313,64 +314,88 @@ export const ReportDetailScreen = () => {
       </View>
 
       {/* Botões de exportação abaixo do header */}
-      <View style={styles.exportHeader}>
+      <View style={reportDetailStyles.exportHeader}>
         {isExporting ? (
           <ActivityIndicator color={colors.accent} size="small" />
         ) : (
-          <View style={styles.exportBtns}>
-            <TouchableOpacity style={styles.exportBtn} onPress={handleExportCSV}>
-              <Text style={styles.exportBtnText}>CSV</Text>
+          <View style={reportDetailStyles.exportBtns}>
+            <TouchableOpacity style={reportDetailStyles.exportBtn} onPress={handleExportCSV}>
+              <Text style={reportDetailStyles.exportBtnText}>CSV</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.exportBtn, styles.exportBtnPDF]}
+              style={[reportDetailStyles.exportBtn, reportDetailStyles.exportBtnPDF]}
               onPress={handleExportPDF}
             >
-              <Text style={[styles.exportBtnText, { color: colors.warning }]}>PDF</Text>
+              <Text style={[reportDetailStyles.exportBtnText, { color: colors.warning }]}>PDF</Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
 
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        style={reportDetailStyles.scroll}
+        contentContainerStyle={reportDetailStyles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Visão geral ── */}
-        <Section title="Visão geral">
-          <View style={styles.overviewRow}>
+        <Section title="Visão geral" styles={reportDetailStyles}>
+          <View style={reportDetailStyles.overviewRow}>
             {/* Pizza */}
-            <View style={styles.pieWrapper}>
+            <View style={reportDetailStyles.pieWrapper}>
               <SvgXml xml={pieSvg} width={180} height={180} />
             </View>
 
             {/* Stats à direita */}
-            <View style={styles.statsColumn}>
-              <StatCard label="Total" value={overall.total} />
-              <StatCard label="Encontrados" value={overall.found} accent />
-              <StatCard label="Pendentes" value={overall.pending} warn={overall.pending > 0} />
+            <View style={reportDetailStyles.statsColumn}>
+              <StatCard
+                label="Total"
+                value={overall.total}
+                styles={reportDetailStyles}
+                colors={colors}
+              />
+              <StatCard
+                label="Encontrados"
+                value={overall.found}
+                accent
+                styles={reportDetailStyles}
+                colors={colors}
+              />
+              <StatCard
+                label="Pendentes"
+                value={overall.pending}
+                warn={overall.pending > 0}
+                styles={reportDetailStyles}
+                colors={colors}
+              />
               <StatCard
                 label="Não Listados"
                 value={overall.unexpectedCount}
                 warn={overall.unexpectedCount > 0}
+                styles={reportDetailStyles}
+                colors={colors}
               />
             </View>
           </View>
 
           {/* Barra de progresso */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressRow}>
-              <Text style={styles.progressLabel}>Progresso geral</Text>
-              <Text style={[styles.progressPct, isComplete && styles.progressPctComplete]}>
+          <View style={reportDetailStyles.progressSection}>
+            <View style={reportDetailStyles.progressRow}>
+              <Text style={reportDetailStyles.progressLabel}>Progresso geral</Text>
+              <Text
+                style={[
+                  reportDetailStyles.progressPct,
+                  isComplete && reportDetailStyles.progressPctComplete,
+                ]}
+              >
                 {overall.progressPct}%
               </Text>
             </View>
-            <View style={styles.progressTrack}>
+            <View style={reportDetailStyles.progressTrack}>
               <View
                 style={[
-                  styles.progressFill,
+                  reportDetailStyles.progressFill,
                   { width: `${overall.progressPct}%` },
-                  isComplete && styles.progressFillComplete,
+                  isComplete && reportDetailStyles.progressFillComplete,
                 ]}
               />
             </View>
@@ -378,41 +403,53 @@ export const ReportDetailScreen = () => {
 
           {/* Metadados */}
           {overall.startedAt && (
-            <View style={styles.metaRow}>
-              <MetaItem label="Início" value={AnalyticsService.formatDateTime(overall.startedAt)} />
+            <View style={reportDetailStyles.metaRow}>
+              <MetaItem
+                label="Início"
+                value={AnalyticsService.formatDateTime(overall.startedAt)}
+                styles={reportDetailStyles}
+              />
               {overall.completedAt && (
                 <MetaItem
                   label="Conclusão"
                   value={AnalyticsService.formatDateTime(overall.completedAt)}
+                  styles={reportDetailStyles}
                 />
               )}
               {overall.durationMinutes != null && overall.durationMinutes > 0 && (
-                <MetaItem label="Duração" value={`${overall.durationMinutes} min`} />
+                <MetaItem
+                  label="Duração"
+                  value={`${overall.durationMinutes} min`}
+                  styles={reportDetailStyles}
+                />
               )}
             </View>
           )}
         </Section>
 
         {/* ── Itens encontrados ── */}
-        <Section title={`Itens encontrados (${report.foundItems.length})`}>
+        <Section
+          title={`Itens encontrados (${report.foundItems.length})`}
+          styles={reportDetailStyles}
+        >
           {report.foundItems.length === 0 ? (
-            <Text style={styles.emptyText}>Nenhum item encontrado ainda.</Text>
+            <Text style={reportDetailStyles.emptyText}>Nenhum item encontrado ainda.</Text>
           ) : (
             report.foundItems.map((item, index) => (
-              <View key={`found-${item.code}-${index}`} style={styles.itemRow}>
-                <View style={[styles.itemInd, styles.itemIndScanned]} />
-                <View style={styles.itemBody}>
-                  <Text style={styles.itemCode}>{item.code}</Text>
+              <View key={`found-${item.code}-${index}`} style={reportDetailStyles.itemRow}>
+                <View style={[reportDetailStyles.itemInd, reportDetailStyles.itemIndScanned]} />
+                <View style={reportDetailStyles.itemBody}>
+                  <Text style={reportDetailStyles.itemCode}>{item.code}</Text>
                   {item.description ? (
-                    <Text style={styles.itemDesc}>{item.description}</Text>
+                    <Text style={reportDetailStyles.itemDesc}>{item.description}</Text>
                   ) : null}
-                  <View style={styles.itemMeta}>
+                  <View style={reportDetailStyles.itemMeta}>
                     {item.location ? (
-                      <Text style={styles.itemMetaTxt}>
+                      <Text style={reportDetailStyles.itemMetaTxt}>
                         <Ionicons name="location-outline" size={12} /> {item.location}
                       </Text>
                     ) : null}
-                    <Text style={styles.itemMetaTxt}>
+                    <Text style={reportDetailStyles.itemMetaTxt}>
                       <Ionicons name="time-outline" size={12} />{' '}
                       {AnalyticsService.formatDateTime(item.scanDate)}
                     </Text>
@@ -425,14 +462,17 @@ export const ReportDetailScreen = () => {
 
         {/* ── Linha do tempo ── */}
         {hasTimeline && timelineSvg && (
-          <Section title={`Linha do tempo (${report.scanTimeline.length} scans)`}>
-            <View style={styles.chartDark}>
+          <Section
+            title={`Linha do tempo (${report.scanTimeline.length} scans)`}
+            styles={reportDetailStyles}
+          >
+            <View style={reportDetailStyles.chartDark}>
               <SvgXml xml={timelineSvg} width="100%" height={110} />
             </View>
             {overall.durationMinutes != null &&
               overall.durationMinutes > 0 &&
               report.scanTimeline.length > 1 && (
-                <Text style={styles.chartCaption}>
+                <Text style={reportDetailStyles.chartCaption}>
                   Média: {((overall.durationMinutes * 60) / report.scanTimeline.length).toFixed(0)}s
                   por item
                 </Text>
@@ -441,32 +481,35 @@ export const ReportDetailScreen = () => {
         )}
 
         {/* ── Não encontrados ── */}
-        <Section title={`Itens não encontrados (${report.notFoundItems.length})`}>
+        <Section
+          title={`Itens não encontrados (${report.notFoundItems.length})`}
+          styles={reportDetailStyles}
+        >
           {report.notFoundItems.length === 0 ? (
-            <View style={styles.allFoundBanner}>
+            <View style={reportDetailStyles.allFoundBanner}>
               <Ionicons
                 name="checkmark-circle"
                 size={20}
                 color={colors.success}
                 style={{ marginRight: 6 }}
               />
-              <Text style={styles.allFoundText}>Todos os itens foram localizados!</Text>
+              <Text style={reportDetailStyles.allFoundText}>Todos os itens foram localizados!</Text>
             </View>
           ) : (
             report.notFoundItems.map((item, i) => (
               <View
                 key={`nf-${item.code}-${item.location ?? ''}-${i}`}
-                style={[styles.itemRow, styles.itemRowPending]}
+                style={[reportDetailStyles.itemRow, reportDetailStyles.itemRowPending]}
               >
-                <View style={[styles.itemInd, styles.itemIndPending]} />
-                <View style={styles.itemBody}>
-                  <Text style={styles.itemCode}>{item.code}</Text>
+                <View style={[reportDetailStyles.itemInd, reportDetailStyles.itemIndPending]} />
+                <View style={reportDetailStyles.itemBody}>
+                  <Text style={reportDetailStyles.itemCode}>{item.code}</Text>
                   {item.description ? (
-                    <Text style={styles.itemDesc}>{item.description}</Text>
+                    <Text style={reportDetailStyles.itemDesc}>{item.description}</Text>
                   ) : null}
-                  <View style={styles.itemMeta}>
+                  <View style={reportDetailStyles.itemMeta}>
                     {item.location ? (
-                      <Text style={styles.itemMetaTxt}>
+                      <Text style={reportDetailStyles.itemMetaTxt}>
                         <Ionicons name="location-outline" size={12} /> {item.location}
                       </Text>
                     ) : null}
@@ -478,28 +521,31 @@ export const ReportDetailScreen = () => {
         </Section>
 
         {/* ── Itens não listados (fora da lista) ── */}
-        <Section title={`Itens não listados (${report.unexpectedItems.length})`}>
+        <Section
+          title={`Itens não listados (${report.unexpectedItems.length})`}
+          styles={reportDetailStyles}
+        >
           {report.unexpectedItems.length === 0 ? (
-            <Text style={styles.emptyText}>Nenhum item inesperado registrado.</Text>
+            <Text style={reportDetailStyles.emptyText}>Nenhum item inesperado registrado.</Text>
           ) : (
             report.unexpectedItems.map((item, index) => (
               <View
                 key={`unexp-${item.code}-${index}`}
-                style={[styles.itemRow, styles.itemRowUnexpected]}
+                style={[reportDetailStyles.itemRow, reportDetailStyles.itemRowUnexpected]}
               >
-                <View style={[styles.itemInd, styles.itemIndUnexpected]} />
-                <View style={styles.itemBody}>
-                  <Text style={styles.itemCode}>{item.code}</Text>
+                <View style={[reportDetailStyles.itemInd, reportDetailStyles.itemIndUnexpected]} />
+                <View style={reportDetailStyles.itemBody}>
+                  <Text style={reportDetailStyles.itemCode}>{item.code}</Text>
                   {item.description ? (
-                    <Text style={styles.itemDesc}>{item.description}</Text>
+                    <Text style={reportDetailStyles.itemDesc}>{item.description}</Text>
                   ) : null}
-                  <View style={styles.itemMeta}>
+                  <View style={reportDetailStyles.itemMeta}>
                     {item.location ? (
-                      <Text style={styles.itemMetaTxt}>
+                      <Text style={reportDetailStyles.itemMetaTxt}>
                         <Ionicons name="location-outline" size={12} /> {item.location}
                       </Text>
                     ) : null}
-                    <Text style={styles.itemMetaTxt}>
+                    <Text style={reportDetailStyles.itemMetaTxt}>
                       <Ionicons name="time-outline" size={12} />{' '}
                       {AnalyticsService.formatDateTime(item.scannedAt)}
                     </Text>
@@ -512,29 +558,37 @@ export const ReportDetailScreen = () => {
 
         {/* ── Histórico de scans ── */}
         {hasTimeline && (
-          <Section title="Histórico de scans">
+          <Section title="Histórico de scans" styles={reportDetailStyles}>
             {report.scanTimeline.map((event, i) => (
-              <ScanEventRow key={`ev-${event.code}-${i}`} event={event} index={i} />
+              <ScanEventRow
+                key={`ev-${event.code}-${i}`}
+                event={event}
+                index={i}
+                styles={reportDetailStyles}
+                colors={colors}
+              />
             ))}
           </Section>
         )}
       </ScrollView>
-      <CustomDialog config={dialogConfig} />
+      <CustomDialog config={dialogConfig} colors={colors} />
     </View>
   );
 };
 
-// ─── Sub-componentes ──────────────────────────────────────────────────────────
+// Sub-componentes
 
-const Section = React.memo(({ title, children }: { title: string; children: React.ReactNode }) => (
-  <View style={styles.section}>
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionAccent} />
-      <Text style={styles.sectionTitle}>{title}</Text>
+const Section = React.memo(
+  ({ title, children, styles }: { title: string; children: React.ReactNode; styles: any }) => (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionAccent} />
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {children}
     </View>
-    {children}
-  </View>
-));
+  )
+);
 
 const StatCard = React.memo(
   ({
@@ -542,11 +596,15 @@ const StatCard = React.memo(
     value,
     accent,
     warn,
+    styles,
+    colors,
   }: {
     label: string;
     value: number;
     accent?: boolean;
     warn?: boolean;
+    styles: any;
+    colors: any;
   }) => (
     <View style={styles.statCard}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -563,44 +621,58 @@ const StatCard = React.memo(
   )
 );
 
-const MetaItem = React.memo(({ label, value }: { label: string; value: string }) => (
-  <View style={styles.metaItem}>
-    <Text style={styles.metaLabel}>{label}</Text>
-    <Text style={styles.metaValue}>{value}</Text>
-  </View>
-));
-
-const ScanEventRow = React.memo(({ event, index }: { event: ScanEvent; index: number }) => (
-  <View style={[styles.scanRow, event.isUnexpected && styles.scanRowUnexpected]}>
-    <Text style={styles.scanIndex}>{index + 1}</Text>
-    <View style={styles.scanBody}>
-      <View style={styles.scanHeader}>
-        <Text style={styles.scanCode}>
-          {event.code}
-          {event.isUnexpected ? (
-            <Text style={{ color: colors.warning, fontSize: 10 }}> (Não Listado)</Text>
-          ) : null}
-        </Text>
-        <Text style={styles.scanTime}>
-          {AnalyticsService.formatDateTime(event.scanDate)}
-          <Text style={styles.scanDelta}> +{event.minutesFromStart}min</Text>
-        </Text>
-      </View>
-      {event.description ? (
-        <Text style={styles.scanDesc} numberOfLines={1}>
-          {event.description}
-        </Text>
-      ) : null}
-      {event.location ? (
-        <Text style={styles.scanMeta}>
-          <Ionicons name="location-outline" size={11} /> {event.location}
-        </Text>
-      ) : null}
+const MetaItem = React.memo(
+  ({ label, value, styles }: { label: string; value: string; styles: any }) => (
+    <View style={styles.metaItem}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue}>{value}</Text>
     </View>
-  </View>
-));
+  )
+);
 
-const CustomDialog = ({ config }: { config: DialogConfig }) => {
+const ScanEventRow = React.memo(
+  ({
+    event,
+    index,
+    styles,
+    colors,
+  }: {
+    event: ScanEvent;
+    index: number;
+    styles: any;
+    colors: any;
+  }) => (
+    <View style={[styles.scanRow, event.isUnexpected && styles.scanRowUnexpected]}>
+      <Text style={styles.scanIndex}>{index + 1}</Text>
+      <View style={styles.scanBody}>
+        <View style={styles.scanHeader}>
+          <Text style={styles.scanCode}>
+            {event.code}
+            {event.isUnexpected ? (
+              <Text style={{ color: colors.warning, fontSize: 10 }}> (Não Listado)</Text>
+            ) : null}
+          </Text>
+          <Text style={styles.scanTime}>
+            {AnalyticsService.formatDateTime(event.scanDate)}
+            <Text style={styles.scanDelta}> +{event.minutesFromStart}min</Text>
+          </Text>
+        </View>
+        {event.description ? (
+          <Text style={styles.scanDesc} numberOfLines={1}>
+            {event.description}
+          </Text>
+        ) : null}
+        {event.location ? (
+          <Text style={styles.scanMeta}>
+            <Ionicons name="location-outline" size={11} /> {event.location}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  )
+);
+
+const CustomDialog = ({ config, colors }: { config: DialogConfig; colors: any }) => {
   if (!config.visible) return null;
 
   return (
@@ -643,7 +715,7 @@ const CustomDialog = ({ config }: { config: DialogConfig }) => {
                   borderRadius: 8,
                   backgroundColor:
                     btn.type === 'primary'
-                      ? colors.accent
+                      ? '#000'
                       : btn.type === 'danger'
                         ? colors.error + '20'
                         : 'transparent',
@@ -655,7 +727,7 @@ const CustomDialog = ({ config }: { config: DialogConfig }) => {
                     fontWeight: '600',
                     color:
                       btn.type === 'primary'
-                        ? '#000'
+                        ? colors.accent
                         : btn.type === 'danger'
                           ? colors.error
                           : colors.textDim,
